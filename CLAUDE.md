@@ -2,7 +2,6 @@
 
 ## Git workflow
 - NEVER push to github directly.
-- NEVER commit to main directly.
-- Committing to your particular git worktree branch is okay
+- Prefer to commit to your particular git worktree branch
 - Never merge PRs yourself; leave merging to me.
 
