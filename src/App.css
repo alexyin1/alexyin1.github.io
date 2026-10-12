@@ -1,0 +1,50 @@
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+  font: 16px/1.5 system-ui, sans-serif;
+}
+
+h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+.summary { color: #555; margin-top: 0; }
+
+section { margin-top: 2rem; }
+h2 { font-size: 1rem; border-bottom: 1px solid #ddd; padding-bottom: 0.35rem; }
+.zone { color: #888; font-weight: normal; }
+
+ul { list-style: none; padding: 0; margin: 0; }
+
+li {
+  display: grid;
+  grid-template-columns: 9rem 7rem 1fr;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-left: 4px solid #ccc;
+  margin-bottom: 2px;
+}
+
+/* Mobile: stack the columns rather than squeezing them. */
+@media (max-width: 40rem) {
+  li { grid-template-columns: 1fr; gap: 0.1rem; }
+  .note { color: #666; font-size: 0.9rem; }
+}
+
+.window { font-variant-numeric: tabular-nums; color: #333; }
+.kind { text-transform: capitalize; font-weight: 600; }
+.note { color: #666; }
+
+li.sleep { border-color: #4a5aa8; }
+li.seek-light { border-color: #e8a317; }
+li.avoid-light { border-color: #5b4a8a; }
+li.melatonin { border-color: #3f8f6f; }
+li.caffeine { border-color: #8a6a4a; }
+li.exercise { border-color: #c2553f; }
+li.meal { border-color: #9a9a9a; }
+
+footer {
+  margin-top: 3rem;
+  font-size: 0.85rem;
+  color: #888;
+  border-top: 1px solid #eee;
+  padding-top: 1rem;
+}
