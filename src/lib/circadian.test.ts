@@ -5,9 +5,13 @@ import {
   type Trip,
   PARAMS,
   computeShift,
+  formatTime,
+  formatWindow,
   normalizeShift,
   offsetHoursAt,
   plan,
+  zoneCityName,
+  zoneOffsetLabel,
 } from './circadian'
 
 const iso = (s: string) => new Date(s)
@@ -273,6 +277,117 @@ describe('plan: DST correctness', () => {
       }).hour,
     )
     expect(new Set(bedHours)).toEqual(new Set([23, 22]))
+  })
+})
+
+describe('place labelling', () => {
+  it('derives a readable city name from a zone', () => {
+    expect(zoneCityName('Asia/Shanghai')).toBe('Shanghai')
+    expect(zoneCityName('America/Los_Angeles')).toBe('Los Angeles')
+    expect(zoneCityName('America/Argentina/Buenos_Aires')).toBe('Buenos Aires')
+    expect(zoneCityName('UTC')).toBe('UTC')
+  })
+
+  it('formats offsets, including DST and half-hour zones', () => {
+    expect(zoneOffsetLabel('Asia/Shanghai', iso('2026-06-01T00:00:00Z'))).toBe('UTC+8')
+    expect(zoneOffsetLabel('America/Los_Angeles', iso('2026-06-01T00:00:00Z'))).toBe('UTC-7')
+    expect(zoneOffsetLabel('America/Los_Angeles', iso('2026-01-01T00:00:00Z'))).toBe('UTC-8')
+    expect(zoneOffsetLabel('Asia/Kolkata', iso('2026-06-01T00:00:00Z'))).toBe('UTC+5:30')
+  })
+
+  it('uses the caller-supplied label over the zone city', () => {
+    // Someone flying out of Oakland is not flying out of "Los Angeles".
+    const p = plan({ ...eastward, originLabel: 'Oakland', destinationLabel: 'Cambridge' })
+    expect(p.origin).toEqual({
+      label: 'Oakland',
+      zone: 'America/Los_Angeles',
+      offsetLabel: 'UTC-7',
+    })
+    expect(p.destination.label).toBe('Cambridge')
+    expect(p.destination.zone).toBe('Europe/London')
+  })
+
+  it('falls back to the zone city when no label is given or it is blank', () => {
+    expect(plan(eastward).origin.label).toBe('Los Angeles')
+    expect(plan({ ...eastward, originLabel: '   ' }).origin.label).toBe('Los Angeles')
+  })
+
+  it('labels each day with wherever the traveler is that day', () => {
+    const p = plan({ ...eastward, originLabel: 'Oakland', destinationLabel: 'Cambridge' })
+    expect(p.days[0].place.label).toBe('Oakland')
+    expect(p.days.at(-1)!.place.label).toBe('Cambridge')
+    for (const d of p.days) expect(d.place.zone).toBe(d.zone)
+  })
+})
+
+describe('clock formatting', () => {
+  const sample = plan(eastward).timeline.find((a) => a.kind === 'sleep')!
+
+  it('formats 24h by default', () => {
+    expect(formatWindow(sample)).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}–\d{2}:\d{2}$/)
+    expect(formatWindow(sample, '24h')).toBe(formatWindow(sample))
+  })
+
+  it('formats 12h with meridiems', () => {
+    expect(formatWindow(sample, '12h')).toMatch(/^[A-Z][a-z]{2} \d{1,2}:\d{2} [AP]M–\d{1,2}:\d{2} [AP]M$/)
+  })
+
+  it('represents the same instants in both formats', () => {
+    const noonUtc = iso('2026-06-01T19:00:00Z') // 12:00 PDT
+    expect(formatTime(noonUtc, 'America/Los_Angeles', '24h')).toBe('12:00')
+    expect(formatTime(noonUtc, 'America/Los_Angeles', '12h')).toBe('12:00 PM')
+
+    const midnight = iso('2026-06-01T07:00:00Z') // 00:00 PDT
+    expect(formatTime(midnight, 'America/Los_Angeles', '24h')).toBe('00:00')
+    expect(formatTime(midnight, 'America/Los_Angeles', '12h')).toBe('12:00 AM')
+
+    const evening = iso('2026-06-02T06:00:00Z') // 23:00 PDT
+    expect(formatTime(evening, 'America/Los_Angeles', '24h')).toBe('23:00')
+    expect(formatTime(evening, 'America/Los_Angeles', '12h')).toBe('11:00 PM')
+  })
+})
+
+describe('plan: Los Angeles <-> Beijing', () => {
+  const toBeijing: Trip = {
+    originZone: 'America/Los_Angeles',
+    destinationZone: 'Asia/Shanghai',
+    originLabel: 'Los Angeles',
+    destinationLabel: 'Beijing',
+    departUtc: iso('2026-06-01T20:00:00Z'), // 13:00 PDT
+    arriveUtc: iso('2026-06-02T08:30:00Z'), // 16:30 CST next day
+    habitualBedLocal: '23:00',
+    habitualWakeLocal: '07:00',
+    preTravelDays: 3,
+  }
+
+  it('is a 9h delay, not a 15h advance', () => {
+    // PDT is UTC-7 and Beijing UTC+8, a raw +15h. Going the short way round
+    // that is a 9h delay, which also happens to be the cheaper direction.
+    const p = plan(toBeijing)
+    expect(p.shiftHours).toBe(-9)
+    expect(p.direction).toBe('delay')
+    expect(p.daysToAdjust).toBe(6) // 9h at 1.5h/day
+  })
+
+  it('is a 9h advance in the other direction', () => {
+    const p = plan({
+      ...toBeijing,
+      originZone: 'Asia/Shanghai',
+      destinationZone: 'America/Los_Angeles',
+      originLabel: 'Beijing',
+      destinationLabel: 'Los Angeles',
+    })
+    expect(p.shiftHours).toBe(9)
+    expect(p.direction).toBe('advance')
+  })
+
+  it('reaches the habitual local schedule in Beijing', () => {
+    const p = plan(toBeijing)
+    const last = p.days.at(-1)!
+    expect(last.place).toEqual({ label: 'Beijing', zone: 'Asia/Shanghai', offsetLabel: 'UTC+8' })
+    const sleep = firstOfKind(last.advice, 'sleep')
+    const bed = DateTime.fromJSDate(sleep.start, { zone: 'Asia/Shanghai' })
+    expect(bed.hour + bed.minute / 60).toBeCloseTo(23, 1)
   })
 })
 

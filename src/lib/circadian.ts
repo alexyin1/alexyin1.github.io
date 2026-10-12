@@ -51,6 +51,14 @@ export interface Trip {
   /** IANA zone, e.g. 'America/Los_Angeles'. */
   originZone: string
   destinationZone: string
+  /**
+   * Human-readable place names, e.g. 'Oakland' / 'Beijing'. Travelers often
+   * start or end somewhere the zone isn't named after, so these are shown
+   * alongside the zone rather than derived from it. Falls back to the zone's
+   * own city segment when omitted.
+   */
+  originLabel?: string
+  destinationLabel?: string
   /** Instants, as ISO 8601 strings with offset, or Date. */
   departUtc: Date
   arriveUtc: Date
@@ -76,12 +84,24 @@ export interface Advice {
   note: string
 }
 
+/** Where the traveler is on a given day, and how to label it. */
+export interface Place {
+  /** Human-readable place name, e.g. 'Beijing'. */
+  label: string
+  /** IANA zone, e.g. 'Asia/Shanghai'. */
+  zone: string
+  /** Offset at the relevant instant, e.g. 'UTC+8'. */
+  offsetLabel: string
+}
+
 export interface PlanDay {
   /** 0-based index from the start of the plan. */
   index: number
   /** Calendar date label in the zone the traveler is in, 'yyyy-MM-dd'. */
   date: string
   zone: string
+  /** Fully labelled location for this day, for display. */
+  place: Place
   /** CBTmin for this day. */
   cbtMin: Date
   /** Hours still to shift at the start of this day (signed). */
@@ -93,6 +113,9 @@ export interface Plan {
   /** Signed hours the body clock must move. Positive = advance. */
   shiftHours: number
   direction: Direction
+  /** Labelled endpoints, resolved at departure and arrival respectively. */
+  origin: Place
+  destination: Place
   /** Days of shifting the plan actually schedules. */
   daysToAdjust: number
   days: PlanDay[]
@@ -117,6 +140,35 @@ export function offsetHoursAt(zone: string, at: Date): number {
   const dt = DateTime.fromJSDate(at, { zone })
   if (!dt.isValid) throw new Error(`Invalid zone '${zone}': ${dt.invalidReason}`)
   return dt.offset / 60
+}
+
+/**
+ * Fallback place name derived from a zone, e.g. 'Asia/Shanghai' -> 'Shanghai'.
+ * Only used when the caller didn't supply a real label.
+ */
+export function zoneCityName(zone: string): string {
+  const segment = zone.split('/').pop() ?? zone
+  return segment.replace(/_/g, ' ')
+}
+
+/** Offset of a zone at an instant, as 'UTC+8' / 'UTC-7' / 'UTC+5:30'. */
+export function zoneOffsetLabel(zone: string, at: Date): string {
+  const offset = offsetHoursAt(zone, at)
+  const sign = offset < 0 ? '-' : '+'
+  const abs = Math.abs(offset)
+  const whole = Math.floor(abs)
+  const minutes = Math.round((abs - whole) * 60)
+  return minutes === 0
+    ? `UTC${sign}${whole}`
+    : `UTC${sign}${whole}:${String(minutes).padStart(2, '0')}`
+}
+
+function makePlace(zone: string, label: string | undefined, at: Date): Place {
+  return {
+    label: label?.trim() || zoneCityName(zone),
+    zone,
+    offsetLabel: zoneOffsetLabel(zone, at),
+  }
 }
 
 /** Normalize an hour difference into (-12, 12]. */
@@ -210,10 +262,18 @@ export function plan(trip: Trip): Plan {
     )
   }
 
+  const origin = makePlace(trip.originZone, trip.originLabel, trip.departUtc)
+  const destination = makePlace(trip.destinationZone, trip.destinationLabel, trip.arriveUtc)
+
   const days: PlanDay[] = []
 
   for (let i = 0; i < totalDays; i++) {
-    const zone = cbt.toJSDate() >= trip.arriveUtc ? trip.destinationZone : trip.originZone
+    const landed = cbt.toJSDate() >= trip.arriveUtc
+    const zone = landed ? trip.destinationZone : trip.originZone
+    // Re-resolve the offset per day so a DST transition mid-plan shows up.
+    const place = landed
+      ? makePlace(trip.destinationZone, trip.destinationLabel, cbt.toJSDate())
+      : makePlace(trip.originZone, trip.originLabel, cbt.toJSDate())
     const wakeAt = cbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
     const bedAt = wakeAt.minus(hours(sleepHours))
 
@@ -269,6 +329,7 @@ export function plan(trip: Trip): Plan {
       index: i,
       date: cbt.setZone(zone).toFormat('yyyy-MM-dd'),
       zone,
+      place,
       cbtMin: cbt.toJSDate(),
       remainingShiftHours: remaining,
       advice,
@@ -290,12 +351,29 @@ export function plan(trip: Trip): Plan {
     .flatMap((d) => d.advice)
     .sort((a, b) => a.start.getTime() - b.start.getTime())
 
-  return { shiftHours, direction, daysToAdjust: daysNeeded, days, timeline, notes }
+  return {
+    shiftHours,
+    direction,
+    origin,
+    destination,
+    daysToAdjust: daysNeeded,
+    days,
+    timeline,
+    notes,
+  }
+}
+
+export type ClockFormat = '24h' | '12h'
+
+/** Format a single instant in a zone, e.g. '07:00' or '7:00 AM'. */
+export function formatTime(at: Date, zone: string, clock: ClockFormat = '24h'): string {
+  const dt = DateTime.fromJSDate(at, { zone })
+  return clock === '12h' ? dt.toFormat('h:mm a') : dt.toFormat('HH:mm')
 }
 
 /** Format an advice window for display, in its own zone. */
-export function formatWindow(a: Advice): string {
+export function formatWindow(a: Advice, clock: ClockFormat = '24h'): string {
   const s = DateTime.fromJSDate(a.start, { zone: a.zone })
-  const e = DateTime.fromJSDate(a.end, { zone: a.zone })
-  return `${s.toFormat('EEE HH:mm')}–${e.toFormat('HH:mm')}`
+  const day = s.toFormat('EEE')
+  return `${day} ${formatTime(a.start, a.zone, clock)}–${formatTime(a.end, a.zone, clock)}`
 }
