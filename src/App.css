@@ -66,7 +66,10 @@ li {
   li { grid-template-columns: 1fr; gap: 0.1rem; }
   .note { color: #666; font-size: 0.9rem; }
   .place { white-space: normal; }
+  .span { margin-left: 0; }
 }
+
+.span { color: #888; font-weight: normal; font-size: 0.85em; margin-left: auto; }
 
 .window { font-variant-numeric: tabular-nums; color: #333; }
 .kind { text-transform: capitalize; font-weight: 600; }

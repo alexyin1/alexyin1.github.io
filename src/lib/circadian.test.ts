@@ -152,18 +152,27 @@ describe('plan: shifting', () => {
 })
 
 describe('plan: phase-response sign conventions', () => {
-  it('advancing puts bright light after CBTmin and darkness before it', () => {
+  // Each day spans two CBTmins: `cbtMin` just before it began, and
+  // `nextCbtMin` inside its trailing sleep. Morning advice is positioned
+  // against the former, evening advice against the latter.
+  it('advancing puts bright light after CBTmin and darkness before the next', () => {
     const day = plan(eastward).days[0]
-    const cbt = day.cbtMin.getTime()
-    expect(firstOfKind(day.advice, 'seek-light').start.getTime()).toBeGreaterThan(cbt)
-    expect(firstOfKind(day.advice, 'avoid-light').end.getTime()).toBeLessThan(cbt)
+    expect(firstOfKind(day.advice, 'seek-light').start.getTime()).toBeGreaterThan(
+      day.cbtMin.getTime(),
+    )
+    expect(firstOfKind(day.advice, 'avoid-light').end.getTime()).toBeLessThan(
+      day.nextCbtMin.getTime(),
+    )
   })
 
-  it('delaying puts bright light before CBTmin and darkness after it', () => {
+  it('delaying puts bright light before the next CBTmin and darkness after the last', () => {
     const day = plan(westward).days[0]
-    const cbt = day.cbtMin.getTime()
-    expect(firstOfKind(day.advice, 'seek-light').end.getTime()).toBeLessThanOrEqual(cbt)
-    expect(firstOfKind(day.advice, 'avoid-light').start.getTime()).toBeGreaterThan(cbt)
+    expect(firstOfKind(day.advice, 'seek-light').end.getTime()).toBeLessThanOrEqual(
+      day.nextCbtMin.getTime(),
+    )
+    expect(firstOfKind(day.advice, 'avoid-light').start.getTime()).toBeGreaterThan(
+      day.cbtMin.getTime(),
+    )
   })
 
   it('schedules melatonin before bed when advancing, and never when delaying', () => {
@@ -180,6 +189,70 @@ describe('plan: phase-response sign conventions', () => {
     const p = plan({ ...eastward, usesMelatonin: false, usesCaffeine: false })
     expect(p.timeline.some((a) => a.kind === 'melatonin')).toBe(false)
     expect(p.timeline.some((a) => a.kind === 'caffeine')).toBe(false)
+  })
+})
+
+describe('plan: day orientation', () => {
+  it('starts each day at wake and ends it with sleep', () => {
+    for (const trip of [eastward, westward]) {
+      for (const day of plan(trip).days) {
+        const first = day.advice[0]
+        const last = day.advice.at(-1)!
+        expect(first.start.getTime()).toBe(day.wake.getTime())
+        expect(last.kind).toBe('sleep')
+        expect(last.start.getTime()).toBe(day.bed.getTime())
+        // Nothing is scheduled outside the wake..sleep-end span.
+        for (const a of day.advice) {
+          expect(a.start.getTime()).toBeGreaterThanOrEqual(day.wake.getTime())
+          expect(a.end.getTime()).toBeLessThanOrEqual(last.end.getTime())
+        }
+      }
+    }
+  })
+
+  it('hands off cleanly: each day ends exactly where the next begins', () => {
+    const days = plan(eastward).days
+    for (let i = 1; i < days.length; i++) {
+      const prevSleep = firstOfKind(days[i - 1].advice, 'sleep')
+      expect(prevSleep.end.getTime()).toBe(days[i].wake.getTime())
+    }
+  })
+
+  it('labels a day by its wake date, not by where the sleep window ends', () => {
+    const p = plan({ ...eastward, preTravelDays: 2 })
+    const day = p.days[0]
+    expect(day.date).toBe(
+      DateTime.fromJSDate(day.wake, { zone: day.zone }).toFormat('yyyy-MM-dd'),
+    )
+    // The trailing sleep runs past local midnight onto the following date.
+    const sleep = firstOfKind(day.advice, 'sleep')
+    const sleepEndDate = DateTime.fromJSDate(sleep.end, { zone: day.zone }).toFormat('yyyy-MM-dd')
+    expect(sleepEndDate).not.toBe(day.date)
+  })
+
+  it('keeps a post-midnight bedtime attached to the day it belongs to', () => {
+    // A westward shift pushes bedtime past midnight within a few days. That
+    // late bedtime must stay on the day the traveler woke up, not jump to the
+    // next one.
+    const p = plan({ ...westward, preTravelDays: 4 })
+    const lateNight = p.days.find((d) => {
+      const bedLocal = DateTime.fromJSDate(d.bed, { zone: d.zone })
+      return bedLocal.hour < 6
+    })
+    expect(lateNight).toBeDefined()
+    expect(lateNight!.bed.getTime()).toBeGreaterThan(lateNight!.wake.getTime())
+    const bedDate = DateTime.fromJSDate(lateNight!.bed, { zone: lateNight!.zone }).toFormat(
+      'yyyy-MM-dd',
+    )
+    expect(bedDate).not.toBe(lateNight!.date) // past midnight...
+    expect(firstOfKind(lateNight!.advice, 'sleep').start.getTime()).toBe(lateNight!.bed.getTime())
+  })
+
+  it('places each day between its two CBTmins', () => {
+    for (const day of plan(eastward).days) {
+      expect(day.cbtMin.getTime()).toBeLessThan(day.wake.getTime())
+      expect(day.nextCbtMin.getTime()).toBeGreaterThan(day.bed.getTime())
+    }
   })
 })
 
@@ -324,12 +397,27 @@ describe('clock formatting', () => {
   const sample = plan(eastward).timeline.find((a) => a.kind === 'sleep')!
 
   it('formats 24h by default', () => {
-    expect(formatWindow(sample)).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}–\d{2}:\d{2}$/)
+    expect(formatWindow(sample)).toMatch(/^[A-Z][a-z]{2} \d{2}:\d{2}–\d{2}:\d{2}( \+1)?$/)
     expect(formatWindow(sample, '24h')).toBe(formatWindow(sample))
   })
 
   it('formats 12h with meridiems', () => {
-    expect(formatWindow(sample, '12h')).toMatch(/^[A-Z][a-z]{2} \d{1,2}:\d{2} [AP]M–\d{1,2}:\d{2} [AP]M$/)
+    expect(formatWindow(sample, '12h')).toMatch(
+      /^[A-Z][a-z]{2} \d{1,2}:\d{2} [AP]M–\d{1,2}:\d{2} [AP]M( \+1)?$/,
+    )
+  })
+
+  it("marks windows that end on the next local date, so 23:00-07:00 doesn't read backwards", () => {
+    const p = plan(eastward)
+    const sleep = firstOfKind(p.days[0].advice, 'sleep')
+    expect(formatWindow(sleep)).toMatch(/ \+1$/)
+    // Day 1 wakes at the habitual 07:00, but its bedtime is already pulled an
+    // hour earlier: the trailing sleep is the first shifted night.
+    expect(formatWindow(sleep)).toBe('Fri 22:00–06:00 +1')
+    expect(formatWindow(sleep, '12h')).toBe('Fri 10:00 PM–6:00 AM +1')
+
+    const breakfast = p.days[0].advice.find((a) => a.kind === 'meal')!
+    expect(formatWindow(breakfast)).not.toMatch(/\+1/)
   })
 
   it('represents the same instants in both formats', () => {

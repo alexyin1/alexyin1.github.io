@@ -9,6 +9,11 @@
  * are all emitted relative to wherever CBTmin currently sits, and CBTmin is
  * stepped by a fixed amount each day until it lines up with the destination.
  *
+ * Days are oriented the way a person lives them: each PlanDay starts at wake
+ * and ends with falling asleep, so its sleep window trails off the end and
+ * crosses local midnight. Each day therefore contains exactly one CBTmin,
+ * `nextCbtMin`, sitting inside that trailing sleep.
+ *
  * Sign conventions, which are the easiest thing to get backwards:
  *   - ADVANCE  = clock moves earlier = eastward travel.
  *   - DELAY    = clock moves later   = westward travel.
@@ -94,16 +99,30 @@ export interface Place {
   offsetLabel: string
 }
 
+/**
+ * One waking day, running from the moment the traveler gets up to the end of
+ * the sleep that follows it. The trailing sleep window normally crosses local
+ * midnight, and on aggressive shifts can start well after it.
+ */
 export interface PlanDay {
   /** 0-based index from the start of the plan. */
   index: number
-  /** Calendar date label in the zone the traveler is in, 'yyyy-MM-dd'. */
+  /**
+   * Calendar date of this day's *wake* time, 'yyyy-MM-dd', in the zone the
+   * traveler is in. The day's trailing sleep may end on the following date.
+   */
   date: string
   zone: string
   /** Fully labelled location for this day, for display. */
   place: Place
-  /** CBTmin for this day. */
+  /** When this day starts: the traveler gets up. */
+  wake: Date
+  /** When this day ends: the traveler goes to sleep. */
+  bed: Date
+  /** CBTmin that preceded this day's wake time. */
   cbtMin: Date
+  /** CBTmin falling inside this day's trailing sleep window. */
+  nextCbtMin: Date
   /** Hours still to shift at the start of this day (signed). */
   remainingShiftHours: number
   advice: Advice[]
@@ -268,14 +287,26 @@ export function plan(trip: Trip): Plan {
   const days: PlanDay[] = []
 
   for (let i = 0; i < totalDays; i++) {
-    const landed = cbt.toJSDate() >= trip.arriveUtc
+    // A plan day runs from waking to falling asleep, the way a person
+    // experiences it -- so the trailing sleep window belongs to this day even
+    // though it usually spills past local midnight. That means we need
+    // tomorrow's CBTmin up front, since it sets tonight's bedtime.
+    const step = Math.sign(remaining) * Math.min(ratePerDay, Math.abs(remaining))
+    // An advance (positive) moves CBTmin *earlier*, hence the subtraction.
+    // `plus({ days: 1 })` is calendar-aware, so local wake time survives DST.
+    const nextCbt = cbt.plus({ days: 1 }).minus(hours(step))
+
+    const wakeAt = cbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
+    const nextWake = nextCbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
+    // Tonight's bedtime, back-computed so sleep duration stays habitual.
+    const bedAt = nextWake.minus(hours(sleepHours))
+
+    const landed = wakeAt.toJSDate() >= trip.arriveUtc
     const zone = landed ? trip.destinationZone : trip.originZone
     // Re-resolve the offset per day so a DST transition mid-plan shows up.
     const place = landed
-      ? makePlace(trip.destinationZone, trip.destinationLabel, cbt.toJSDate())
-      : makePlace(trip.originZone, trip.originLabel, cbt.toJSDate())
-    const wakeAt = cbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
-    const bedAt = wakeAt.minus(hours(sleepHours))
+      ? makePlace(trip.destinationZone, trip.destinationLabel, wakeAt.toJSDate())
+      : makePlace(trip.originZone, trip.originLabel, wakeAt.toJSDate())
 
     const advice: Advice[] = []
     const add = (kind: AdviceKind, start: DateTime, end: DateTime, note: string) => {
@@ -290,12 +321,11 @@ export function plan(trip: Trip): Plan {
       })
     }
 
-    add('sleep', bedAt, wakeAt, 'Target sleep window.')
-
     if (direction === 'advance') {
-      // Light after CBTmin advances. Practically: bright light on waking.
+      // Light after CBTmin advances. Practically: bright light on waking,
+      // just after the CBTmin that ended last night's sleep.
       add('seek-light', wakeAt, wakeAt.plus(hours(3)), 'Bright light on waking — outdoors if possible.')
-      // Evening light before CBTmin would undo the advance.
+      // Evening light falls before tomorrow's CBTmin and would undo the advance.
       add('avoid-light', bedAt.minus(hours(4)), bedAt, 'Dim the lights; avoid screens and bright indoor light.')
       add('exercise', wakeAt, wakeAt.plus(hours(2)), 'Morning exercise reinforces the advance.')
       if (trip.usesMelatonin !== false) {
@@ -310,37 +340,38 @@ export function plan(trip: Trip): Plan {
       add('exercise', bedAt.minus(hours(6)), bedAt.minus(hours(3)), 'Late-afternoon exercise reinforces the delay.')
     }
 
-    // The following night's bedtime, which trails the day's waking hours.
-    const nextBed = bedAt.plus({ days: 1 })
-
     if (trip.usesCaffeine !== false) {
       // Useful for alertness early in the waking day, but cut it well before bed.
-      const caffeineEnd = DateTime.min(wakeAt.plus(hours(5)), nextBed.minus(hours(8)))
+      const caffeineEnd = DateTime.min(wakeAt.plus(hours(5)), bedAt.minus(hours(8)))
       add('caffeine', wakeAt, caffeineEnd, 'Caffeine is fine here; avoid it within 8h of your target bedtime.')
     }
 
     add('meal', wakeAt.plus(hours(0.5)), wakeAt.plus(hours(1.5)), 'Breakfast — meal timing helps anchor the shift.')
     add('meal', wakeAt.plus(hours(5)), wakeAt.plus(hours(6)), 'Lunch.')
-    add('meal', nextBed.minus(hours(4)), nextBed.minus(hours(3)), 'Dinner — keep it at least 3h before bed.')
+    add('meal', bedAt.minus(hours(4)), bedAt.minus(hours(3)), 'Dinner — keep it at least 3h before bed.')
+
+    // The day closes with the night's sleep, which runs into tomorrow.
+    add('sleep', bedAt, nextWake, 'Target sleep window.')
 
     advice.sort((a, b) => a.start.getTime() - b.start.getTime())
 
     days.push({
       index: i,
-      date: cbt.setZone(zone).toFormat('yyyy-MM-dd'),
+      // Labelled by the morning the traveler wakes up, not by when the
+      // trailing sleep window happens to end.
+      date: wakeAt.setZone(zone).toFormat('yyyy-MM-dd'),
       zone,
       place,
+      wake: wakeAt.toJSDate(),
+      bed: bedAt.toJSDate(),
       cbtMin: cbt.toJSDate(),
+      nextCbtMin: nextCbt.toJSDate(),
       remainingShiftHours: remaining,
       advice,
     })
 
-    // Step the clock for tomorrow, capped by whatever shift is left. An
-    // advance (positive) moves CBTmin *earlier*, hence the subtraction.
-    // `plus({ days: 1 })` is calendar-aware, so local wake time survives DST.
-    const step = Math.sign(remaining) * Math.min(ratePerDay, Math.abs(remaining))
     remaining -= step
-    cbt = cbt.plus({ days: 1 }).minus(hours(step))
+    cbt = nextCbt
   }
 
   if (direction === 'none') {
@@ -371,9 +402,17 @@ export function formatTime(at: Date, zone: string, clock: ClockFormat = '24h'): 
   return clock === '12h' ? dt.toFormat('h:mm a') : dt.toFormat('HH:mm')
 }
 
-/** Format an advice window for display, in its own zone. */
+/**
+ * Format an advice window for display, in its own zone. A window that ends on
+ * a later local date -- a sleep window, usually -- is marked '+1', since
+ * otherwise 'Mon 23:00–07:00' reads as going backwards.
+ */
 export function formatWindow(a: Advice, clock: ClockFormat = '24h'): string {
   const s = DateTime.fromJSDate(a.start, { zone: a.zone })
-  const day = s.toFormat('EEE')
-  return `${day} ${formatTime(a.start, a.zone, clock)}–${formatTime(a.end, a.zone, clock)}`
+  const e = DateTime.fromJSDate(a.end, { zone: a.zone })
+  const crossesMidnight = !e.hasSame(s, 'day')
+  return (
+    `${s.toFormat('EEE')} ${formatTime(a.start, a.zone, clock)}–` +
+    `${formatTime(a.end, a.zone, clock)}${crossesMidnight ? ' +1' : ''}`
+  )
 }

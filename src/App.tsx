@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { plan, formatWindow, type ClockFormat, type Place, type Trip } from './lib/circadian'
+import {
+  plan,
+  formatTime,
+  formatWindow,
+  type ClockFormat,
+  type Place,
+  type Trip,
+} from './lib/circadian'
 import './App.css'
 
 // Placeholder trip. Step 3 replaces this with a real input form.
@@ -79,6 +86,10 @@ export default function App() {
         <section key={day.index}>
           <h2>
             Day {day.index + 1} — {day.date} <PlaceTag place={day.place} />
+            <span className="span">
+              up {formatTime(day.wake, day.zone, clock)} → bed{' '}
+              {formatTime(day.bed, day.zone, clock)}
+            </span>
           </h2>
           <ul>
             {day.advice.map((a, i) => (
