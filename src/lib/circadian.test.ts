@@ -67,39 +67,67 @@ describe('normalizeShift', () => {
 
 describe('computeShift', () => {
   it('treats eastward travel as an advance', () => {
-    expect(computeShift(eastward)).toEqual({ shiftHours: 8, direction: 'advance' })
+    expect(computeShift(eastward)).toEqual({
+      shiftHours: 8,
+      direction: 'advance',
+      travelDirection: 'eastward',
+    })
   })
 
   it('treats westward travel as a delay', () => {
-    expect(computeShift(westward)).toEqual({ shiftHours: -8, direction: 'delay' })
+    expect(computeShift(westward)).toEqual({
+      shiftHours: -8,
+      direction: 'delay',
+      travelDirection: 'westward',
+    })
   })
 
   it('reports no shift within a single zone', () => {
     const same = { ...eastward, destinationZone: 'America/Los_Angeles' }
-    expect(computeShift(same)).toEqual({ shiftHours: 0, direction: 'none' })
+    expect(computeShift(same)).toEqual({
+      shiftHours: 0,
+      direction: 'none',
+      travelDirection: 'none',
+    })
   })
 
   it('wraps raw offsets greater than 12h to the short way round the clock', () => {
     // LA -> Tokyo is +16h of raw offset, but the body only has to travel 8h,
     // and it goes the short way: an 8h delay, not a 16h advance.
     const tokyo = { ...eastward, destinationZone: 'Asia/Tokyo' }
-    expect(computeShift(tokyo)).toEqual({ shiftHours: -8, direction: 'delay' })
+    expect(computeShift(tokyo)).toEqual({
+      shiftHours: -8,
+      direction: 'delay',
+      travelDirection: 'westward',
+    })
   })
 
   it('prefers a delay when advancing the same distance would take longer', () => {
     // LA -> Dubai is +11h: an 11h advance costs 11 days at 1h/day, while the
     // equivalent 13h delay costs ~8.7 days at 1.5h/day. Delay wins.
     const dubai = { ...eastward, destinationZone: 'Asia/Dubai' }
-    expect(computeShift(dubai)).toEqual({ shiftHours: -13, direction: 'delay' })
+    expect(computeShift(dubai)).toEqual({
+      shiftHours: -13,
+      direction: 'delay',
+      travelDirection: 'eastward',
+    })
 
     // A 6h advance, by contrast, is cheaper advanced (6 days vs 12).
     const paris = { ...eastward, destinationZone: 'Europe/Paris' } // CEST +2 vs PDT -7
-    expect(computeShift(paris)).toEqual({ shiftHours: 9, direction: 'advance' })
+    expect(computeShift(paris)).toEqual({
+      shiftHours: 9,
+      direction: 'advance',
+      travelDirection: 'eastward',
+    })
   })
 
   it('honours a forced strategy', () => {
     const forced = computeShift({ ...eastward, strategy: 'delay' })
-    expect(forced).toEqual({ shiftHours: -16, direction: 'delay' })
+    expect(forced).toEqual({
+      shiftHours: -16,
+      direction: 'delay',
+      travelDirection: 'eastward',
+    })
   })
 })
 
@@ -131,7 +159,9 @@ describe('plan: shifting', () => {
     for (const s of steps) expect(s).toBeGreaterThanOrEqual(24 - 1e-9)
     const totalShifted = steps.reduce((acc, s) => acc + (s - 24), 0)
     expect(totalShifted).toBeCloseTo(8, 6)
-    expect(p.daysToAdjust).toBe(Math.ceil(8 / PARAMS.delayHoursPerDay))
+    // 3h of the 8h happens before arrival at 1h/day, the remaining 5h after
+    // at 1.5h/day: 3 + 4 = 7 days of active shifting.
+    expect(p.daysToAdjust).toBe(7)
   })
 
   it('starts the plan preTravelDays before departure', () => {
@@ -189,6 +219,87 @@ describe('plan: phase-response sign conventions', () => {
     const p = plan({ ...eastward, usesMelatonin: false, usesCaffeine: false })
     expect(p.timeline.some((a) => a.kind === 'melatonin')).toBe(false)
     expect(p.timeline.some((a) => a.kind === 'caffeine')).toBe(false)
+  })
+})
+
+describe('plan: pre-travel vs post-arrival rates', () => {
+  const stepsOf = (p: ReturnType<typeof plan>) =>
+    p.days.map((d, i) => {
+      const prev = i === 0 ? null : p.days[i - 1]
+      if (!prev) return null
+      const hrs =
+        (DateTime.fromJSDate(d.cbtMin).toMillis() -
+          DateTime.fromJSDate(prev.cbtMin).toMillis()) /
+        3.6e6
+      return { landedBefore: prev.wake.getTime() >= eastward.arriveUtc.getTime(), shift: 24 - hrs }
+    })
+
+  it('shifts at most 1h/day before arrival, in either direction', () => {
+    for (const trip of [eastward, westward]) {
+      const p = plan({ ...trip, preTravelDays: 5 })
+      for (const d of p.days) {
+        if (d.wake.getTime() >= trip.arriveUtc.getTime()) continue
+        const moved = Math.abs(
+          24 -
+            (DateTime.fromJSDate(d.nextCbtMin).toMillis() -
+              DateTime.fromJSDate(d.cbtMin).toMillis()) /
+              3.6e6,
+        )
+        expect(moved).toBeLessThanOrEqual(PARAMS.preTravelHoursPerDay + 1e-9)
+      }
+    }
+  })
+
+  it('caps total pre-travel shifting even with a long run-up', () => {
+    // 7 days of run-up would be 7h at 1h/day, but the cap is 3h.
+    const p = plan({ ...westward, preTravelDays: 7 })
+    expect(p.preTravelShiftHours).toBeCloseTo(PARAMS.maxPreTravelShiftHours, 6)
+  })
+
+  it('uses the faster delay rate only after arrival', () => {
+    const p = plan({ ...westward, preTravelDays: 5 })
+    const postArrival = stepsOf(p).filter((s) => s?.landedBefore)
+    expect(postArrival.length).toBeGreaterThan(0)
+    expect(postArrival.some((s) => Math.abs(s!.shift) > PARAMS.preTravelHoursPerDay)).toBe(true)
+    for (const s of postArrival) {
+      expect(Math.abs(s!.shift)).toBeLessThanOrEqual(PARAMS.delayHoursPerDay + 1e-9)
+    }
+  })
+
+  it('reports how much of the shift lands before departure', () => {
+    expect(plan({ ...westward, preTravelDays: 0 }).preTravelShiftHours).toBeLessThanOrEqual(
+      PARAMS.maxPreTravelShiftHours,
+    )
+    expect(plan({ ...westward, preTravelDays: 3 }).preTravelShiftHours).toBeGreaterThan(0)
+    // A tiny shift finishes before the cap ever binds.
+    const oneHour = { ...eastward, destinationZone: 'America/Denver' } // PDT -7 -> MDT -6
+    expect(plan(oneHour).preTravelShiftHours).toBeCloseTo(1, 6)
+  })
+
+  it('still completes the full shift, just over more days', () => {
+    const p = plan({ ...westward, preTravelDays: 3 })
+    expect(p.days.at(-1)!.remainingShiftHours).toBeCloseTo(0, 6)
+    const last = p.days.at(-1)!
+    const localWake = DateTime.fromJSDate(last.wake, { zone: last.zone })
+    expect(localWake.hour + localWake.minute / 60).toBeCloseTo(7, 1)
+  })
+})
+
+describe('plan: travel direction', () => {
+  it('reports the way round the clock the destination lies', () => {
+    expect(plan(eastward).travelDirection).toBe('eastward')
+    expect(plan(westward).travelDirection).toBe('westward')
+    expect(plan({ ...eastward, destinationZone: 'America/Los_Angeles' }).travelDirection).toBe(
+      'none',
+    )
+  })
+
+  it('can disagree with the chosen strategy on a long hop', () => {
+    // LA -> Dubai is +11h, so the destination lies eastward, but the plan
+    // takes the clock the other way as a 13h delay.
+    const p = plan({ ...eastward, destinationZone: 'Asia/Dubai' })
+    expect(p.travelDirection).toBe('eastward')
+    expect(p.direction).toBe('delay')
   })
 })
 
@@ -454,7 +565,8 @@ describe('plan: Los Angeles <-> Beijing', () => {
     const p = plan(toBeijing)
     expect(p.shiftHours).toBe(-9)
     expect(p.direction).toBe('delay')
-    expect(p.daysToAdjust).toBe(6) // 9h at 1.5h/day
+    // 3h before arrival at 1h/day, then 6h at 1.5h/day.
+    expect(p.daysToAdjust).toBe(7)
   })
 
   it('is a 9h advance in the other direction', () => {

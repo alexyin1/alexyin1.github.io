@@ -7,6 +7,7 @@ import {
   type Place,
   type Trip,
 } from './lib/circadian'
+import { briefing } from './lib/briefing'
 import './App.css'
 
 // Placeholder trip. Step 3 replaces this with a real input form.
@@ -49,6 +50,7 @@ function PlaceTag({ place }: { place: Place }) {
 export default function App() {
   const [clock, setClock] = useClockFormat()
   const result = plan(demoTrip)
+  const brief = briefing(result)
 
   return (
     <main>
@@ -72,15 +74,23 @@ export default function App() {
       <p className="route">
         <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
       </p>
-      <p className="summary">
-        {result.direction === 'advance' ? 'Advance' : 'Delay'} your body clock by{' '}
-        {Math.abs(result.shiftHours)}h over about {result.daysToAdjust} days.
-      </p>
-      {result.notes.map((n) => (
-        <p key={n} className="note-line">
-          {n}
-        </p>
-      ))}
+
+      <section className="briefing">
+        <h2 className={`direction ${result.travelDirection}`}>{brief.headline}</h2>
+        <p className="summary">{brief.summary}</p>
+        <ul className="tips">
+          {brief.tips.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+        {result.notes.map((n) => (
+          <p key={n} className="note-line">
+            {n}
+          </p>
+        ))}
+      </section>
+
+      <h2 className="itinerary-head">Day by day</h2>
 
       {result.days.map((day) => (
         <section key={day.index}>

@@ -31,9 +31,58 @@ h1 { font-size: 1.6rem; margin: 0; }
 .clock-toggle button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
 .clock-toggle button.active { background: #333; border-color: #333; color: #fff; }
 
-.route { margin: 0.75rem 0 0.25rem; }
-.summary { color: #555; margin-top: 0; }
-.note-line { color: #a06a00; font-size: 0.9rem; }
+.route { margin: 0.75rem 0 1.25rem; }
+
+.briefing {
+  margin-top: 0;
+  padding: 1rem 1.25rem;
+  background: #f7f7f5;
+  border-radius: 6px;
+}
+
+.direction {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #666;
+  margin: 0;
+  border: none;
+  padding: 0;
+  display: block;
+}
+
+.direction::before { margin-right: 0.4rem; }
+.direction.eastward::before { content: '\2192'; }
+.direction.westward::before { content: '\2190'; }
+
+.summary {
+  margin: 0.3rem 0 0.9rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tips { margin: 0; }
+.tips li {
+  display: list-item;
+  list-style: disc;
+  margin-left: 1.1rem;
+  padding: 0;
+  border: none;
+  color: #444;
+  font-size: 0.93rem;
+  margin-bottom: 0.45rem;
+}
+
+.note-line { color: #a06a00; font-size: 0.9rem; margin-bottom: 0; }
+
+.itinerary-head {
+  margin-top: 2.5rem;
+  font-size: 1.25rem;
+  border: none;
+  padding: 0;
+  display: block;
+}
 
 .place { white-space: nowrap; font-weight: 600; }
 .zone { color: #888; font-weight: normal; font-size: 0.85em; }

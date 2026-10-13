@@ -31,10 +31,28 @@ import { DateTime, Duration } from 'luxon'
 export const PARAMS = {
   /** Hours CBTmin precedes habitual wake time. */
   cbtMinBeforeWakeHours: 2,
-  /** Max clock advance achievable per day. */
+  /**
+   * Max clock advance per day after arrival. Advances are hard: ~1h/day is
+   * about the physiological ceiling, so there is little headroom to be more
+   * aggressive once you land.
+   */
   advanceHoursPerDay: 1,
-  /** Max clock delay achievable per day. Delays come easier than advances. */
+  /**
+   * Max clock delay per day after arrival. Delays come easier than advances,
+   * because the free-running human clock is slightly longer than 24h.
+   */
   delayHoursPerDay: 1.5,
+  /**
+   * Before departure the traveler still has work, school and family on home
+   * time, so shifting is capped at a gentler rate in both directions.
+   */
+  preTravelHoursPerDay: 1,
+  /**
+   * And capped in total: moving more than this before you fly is unpleasant
+   * and rarely sustained. The remainder is left for after arrival, where the
+   * destination's own light and social cues do most of the work.
+   */
+  maxPreTravelShiftHours: 3,
   /** Don't produce schedules longer than this many days. */
   maxPlanDays: 16,
 }
@@ -42,6 +60,9 @@ export const PARAMS = {
 // --- Types -----------------------------------------------------------------
 
 export type Direction = 'advance' | 'delay' | 'none'
+
+/** Which way round the clock the destination lies. */
+export type TravelDirection = 'eastward' | 'westward' | 'none'
 
 export type AdviceKind =
   | 'sleep'
@@ -132,11 +153,20 @@ export interface Plan {
   /** Signed hours the body clock must move. Positive = advance. */
   shiftHours: number
   direction: Direction
+  /**
+   * Which way round the clock the destination lies, before any strategy
+   * choice. Usually agrees with `direction`, but not always: a long eastward
+   * hop can be cheaper to treat as a delay, and then the traveler is flying
+   * east while their clock moves west.
+   */
+  travelDirection: TravelDirection
   /** Labelled endpoints, resolved at departure and arrival respectively. */
   origin: Place
   destination: Place
   /** Days of shifting the plan actually schedules. */
   daysToAdjust: number
+  /** How much of the shift happens before arrival (unsigned hours). */
+  preTravelShiftHours: number
   days: PlanDay[]
   /** Flattened, chronologically sorted advice across all days. */
   timeline: Advice[]
@@ -206,13 +236,24 @@ export function normalizeShift(hours: number): number {
  * large eastward shift (say +10h) is handled as a westward delay: delays run
  * at a higher hours-per-day rate.
  */
-export function computeShift(trip: Trip): { shiftHours: number; direction: Direction } {
+export function computeShift(trip: Trip): {
+  shiftHours: number
+  direction: Direction
+  travelDirection: TravelDirection
+} {
   const raw =
     offsetHoursAt(trip.destinationZone, trip.arriveUtc) -
     offsetHoursAt(trip.originZone, trip.arriveUtc)
   const advanceOption = normalizeShift(raw)
 
-  if (Math.abs(advanceOption) < 1e-9) return { shiftHours: 0, direction: 'none' }
+  // The short way round the clock is also the direction the traveler is
+  // really going, independent of which strategy we end up choosing.
+  const travelDirection: TravelDirection =
+    advanceOption > 0 ? 'eastward' : advanceOption < 0 ? 'westward' : 'none'
+
+  if (Math.abs(advanceOption) < 1e-9) {
+    return { shiftHours: 0, direction: 'none', travelDirection: 'none' }
+  }
 
   const forced = trip.strategy && trip.strategy !== 'auto' ? trip.strategy : null
   // The same destination phase is reachable either way around the clock.
@@ -226,7 +267,11 @@ export function computeShift(trip: Trip): { shiftHours: number; direction: Direc
   else if (forced === 'delay') shiftHours = advanceOption < 0 ? advanceOption : alternative
   else shiftHours = daysFor(alternative) < daysFor(advanceOption) ? alternative : advanceOption
 
-  return { shiftHours, direction: shiftHours > 0 ? 'advance' : 'delay' }
+  return {
+    shiftHours,
+    direction: shiftHours > 0 ? 'advance' : 'delay',
+    travelDirection,
+  }
 }
 
 function hours(n: number): Duration {
@@ -243,7 +288,7 @@ export function plan(trip: Trip): Plan {
 
   const bed = parseHHmm(trip.habitualBedLocal)
   const wake = parseHHmm(trip.habitualWakeLocal)
-  const { shiftHours, direction } = computeShift(trip)
+  const { shiftHours, direction, travelDirection } = computeShift(trip)
   const notes: string[] = []
 
   // Habitual sleep duration, handling the usual overnight wrap.
@@ -260,48 +305,100 @@ export function plan(trip: Trip): Plan {
     .set({ hour: wake.hour, minute: wake.minute, second: 0, millisecond: 0 })
     .minus(hours(PARAMS.cbtMinBeforeWakeHours))
 
-  const ratePerDay =
+  const arrivalRate =
     direction === 'advance' ? PARAMS.advanceHoursPerDay : PARAMS.delayHoursPerDay
-  let remaining = shiftHours
-
-  const daysNeeded =
-    direction === 'none' ? 0 : Math.ceil(Math.abs(shiftHours) / ratePerDay)
-  // Run until the shift is done, but always cover at least one full day past
-  // arrival so the traveler gets on-the-ground guidance.
-  const daysAfterArrival = Math.ceil(arrive.diff(day0, 'days').days) + 1
-  const totalDays = Math.min(
-    PARAMS.maxPlanDays,
-    Math.max(daysNeeded + preTravelDays, daysAfterArrival, 1),
-  )
-
-  if (daysNeeded + preTravelDays > PARAMS.maxPlanDays) {
-    notes.push(
-      `Full adaptation would take about ${daysNeeded} days of shifting; this plan is ` +
-        `truncated to ${PARAMS.maxPlanDays} days.`,
-    )
-  }
 
   const origin = makePlace(trip.originZone, trip.originLabel, trip.departUtc)
   const destination = makePlace(trip.destinationZone, trip.destinationLabel, trip.arriveUtc)
 
-  const days: PlanDay[] = []
+  /**
+   * Pass 1: walk the clock forward and record the shape of each day. We need
+   * this before emitting advice, because how long the plan runs depends on
+   * when the shift finishes, and that in turn depends on the pre-travel cap.
+   */
+  interface Frame {
+    cbt: DateTime
+    nextCbt: DateTime
+    wake: DateTime
+    nextWake: DateTime
+    bed: DateTime
+    landed: boolean
+    remainingAtStart: number
+    step: number
+  }
 
-  for (let i = 0; i < totalDays; i++) {
+  const frames: Frame[] = []
+  let remaining = shiftHours
+  let preTravelShiftUsed = 0
+  let completedOnDay = -1
+
+  for (let i = 0; i < PARAMS.maxPlanDays; i++) {
+    const wakeAt = cbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
+    const landed = wakeAt.toJSDate() >= trip.arriveUtc
+
+    // Before arrival the traveler is still living on home time, so shifting
+    // is slower and capped in total; afterwards the full rate applies.
+    const allowance = landed
+      ? arrivalRate
+      : Math.min(
+          PARAMS.preTravelHoursPerDay,
+          Math.max(0, PARAMS.maxPreTravelShiftHours - preTravelShiftUsed),
+        )
+    const magnitude = Math.min(allowance, Math.abs(remaining))
+    const step = Math.sign(remaining) * magnitude
+    if (!landed) preTravelShiftUsed += magnitude
+
     // A plan day runs from waking to falling asleep, the way a person
     // experiences it -- so the trailing sleep window belongs to this day even
     // though it usually spills past local midnight. That means we need
     // tomorrow's CBTmin up front, since it sets tonight's bedtime.
-    const step = Math.sign(remaining) * Math.min(ratePerDay, Math.abs(remaining))
+    //
     // An advance (positive) moves CBTmin *earlier*, hence the subtraction.
     // `plus({ days: 1 })` is calendar-aware, so local wake time survives DST.
     const nextCbt = cbt.plus({ days: 1 }).minus(hours(step))
-
-    const wakeAt = cbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
     const nextWake = nextCbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
     // Tonight's bedtime, back-computed so sleep duration stays habitual.
     const bedAt = nextWake.minus(hours(sleepHours))
 
-    const landed = wakeAt.toJSDate() >= trip.arriveUtc
+    frames.push({
+      cbt,
+      nextCbt,
+      wake: wakeAt,
+      nextWake,
+      bed: bedAt,
+      landed,
+      remainingAtStart: remaining,
+      step,
+    })
+
+    remaining -= step
+    if (completedOnDay < 0 && Math.abs(remaining) < 1e-9) completedOnDay = i
+    cbt = nextCbt
+  }
+
+  const daysNeeded = frames.filter((f) => f.step !== 0).length
+  const preTravelShiftHours = preTravelShiftUsed
+  // Run until the shift is done, showing one settled day at the end, but
+  // always cover at least one full day past arrival so the traveler gets
+  // on-the-ground guidance.
+  const daysAfterArrival = Math.ceil(arrive.diff(day0, 'days').days) + 1
+  const totalDays = Math.min(
+    PARAMS.maxPlanDays,
+    Math.max(completedOnDay < 0 ? PARAMS.maxPlanDays : completedOnDay + 2, daysAfterArrival, 1),
+  )
+
+  if (completedOnDay < 0 && direction !== 'none') {
+    notes.push(
+      `This shift takes longer than ${PARAMS.maxPlanDays} days at a sustainable rate; ` +
+        `the plan is truncated and you will still be adapting at the end of it.`,
+    )
+  }
+
+  // Pass 2: emit advice for the days we are actually going to show.
+  const days: PlanDay[] = []
+
+  for (let i = 0; i < totalDays; i++) {
+    const { wake: wakeAt, nextWake, bed: bedAt, landed, remainingAtStart } = frames[i]
     const zone = landed ? trip.destinationZone : trip.originZone
     // Re-resolve the offset per day so a DST transition mid-plan shows up.
     const place = landed
@@ -321,34 +418,37 @@ export function plan(trip: Trip): Plan {
       })
     }
 
+    // Notes stay terse: the standing rules (dinner before bed, caffeine
+    // cutoff, why light timing works) live in the trip briefing, so the
+    // itinerary only has to say what to do and when.
     if (direction === 'advance') {
       // Light after CBTmin advances. Practically: bright light on waking,
       // just after the CBTmin that ended last night's sleep.
-      add('seek-light', wakeAt, wakeAt.plus(hours(3)), 'Bright light on waking — outdoors if possible.')
+      add('seek-light', wakeAt, wakeAt.plus(hours(3)), 'Bright light on waking, outdoors if you can.')
       // Evening light falls before tomorrow's CBTmin and would undo the advance.
-      add('avoid-light', bedAt.minus(hours(4)), bedAt, 'Dim the lights; avoid screens and bright indoor light.')
-      add('exercise', wakeAt, wakeAt.plus(hours(2)), 'Morning exercise reinforces the advance.')
+      add('avoid-light', bedAt.minus(hours(4)), bedAt, 'Keep the evening dim.')
+      add('exercise', wakeAt, wakeAt.plus(hours(2)), 'Morning exercise.')
       if (trip.usesMelatonin !== false) {
         const mel = bedAt.minus(hours(5))
-        add('melatonin', mel, mel.plus(hours(1)), 'Low dose (0.5 mg) to pull the clock earlier.')
+        add('melatonin', mel, mel.plus(hours(1)), 'Low dose, 0.5 mg.')
       }
     } else if (direction === 'delay') {
       // Light before CBTmin delays. Practically: bright light in the evening.
-      add('seek-light', bedAt.minus(hours(5)), bedAt, 'Stay in bright light through the evening.')
+      add('seek-light', bedAt.minus(hours(5)), bedAt, 'Bright light through the evening.')
       // Morning light after CBTmin would undo the delay.
-      add('avoid-light', wakeAt, wakeAt.plus(hours(4)), 'Sunglasses outdoors; keep the morning dim.')
-      add('exercise', bedAt.minus(hours(6)), bedAt.minus(hours(3)), 'Late-afternoon exercise reinforces the delay.')
+      add('avoid-light', wakeAt, wakeAt.plus(hours(4)), 'Keep the morning dim.')
+      add('exercise', bedAt.minus(hours(6)), bedAt.minus(hours(3)), 'Late-afternoon exercise.')
     }
 
     if (trip.usesCaffeine !== false) {
       // Useful for alertness early in the waking day, but cut it well before bed.
       const caffeineEnd = DateTime.min(wakeAt.plus(hours(5)), bedAt.minus(hours(8)))
-      add('caffeine', wakeAt, caffeineEnd, 'Caffeine is fine here; avoid it within 8h of your target bedtime.')
+      add('caffeine', wakeAt, caffeineEnd, 'Caffeine window — nothing after this.')
     }
 
-    add('meal', wakeAt.plus(hours(0.5)), wakeAt.plus(hours(1.5)), 'Breakfast — meal timing helps anchor the shift.')
-    add('meal', wakeAt.plus(hours(5)), wakeAt.plus(hours(6)), 'Lunch.')
-    add('meal', bedAt.minus(hours(4)), bedAt.minus(hours(3)), 'Dinner — keep it at least 3h before bed.')
+    // Only the first meal is scheduled. It is the one with real phase-setting
+    // value, and the dinner-before-bed rule is a standing tip, not a slot.
+    add('meal', wakeAt.plus(hours(0.5)), wakeAt.plus(hours(1.5)), 'First meal.')
 
     // The day closes with the night's sleep, which runs into tomorrow.
     add('sleep', bedAt, nextWake, 'Target sleep window.')
@@ -364,14 +464,11 @@ export function plan(trip: Trip): Plan {
       place,
       wake: wakeAt.toJSDate(),
       bed: bedAt.toJSDate(),
-      cbtMin: cbt.toJSDate(),
-      nextCbtMin: nextCbt.toJSDate(),
-      remainingShiftHours: remaining,
+      cbtMin: frames[i].cbt.toJSDate(),
+      nextCbtMin: frames[i].nextCbt.toJSDate(),
+      remainingShiftHours: remainingAtStart,
       advice,
     })
-
-    remaining -= step
-    cbt = nextCbt
   }
 
   if (direction === 'none') {
@@ -385,9 +482,11 @@ export function plan(trip: Trip): Plan {
   return {
     shiftHours,
     direction,
+    travelDirection,
     origin,
     destination,
     daysToAdjust: daysNeeded,
+    preTravelShiftHours,
     days,
     timeline,
     notes,

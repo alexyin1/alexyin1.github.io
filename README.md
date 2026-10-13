@@ -30,8 +30,11 @@ site served from the domain root.
 
 - `src/lib/circadian.ts` — the model. Pure functions, no DOM or React imports,
   so it can be tested and reasoned about on its own.
-- `src/lib/circadian.test.ts` — tests for the model, including the
-  phase-response sign conventions and DST handling.
+- `src/lib/briefing.ts` — the trip briefing prose, derived from a `Plan`.
+  Separate from the model so copy can be edited for editorial reasons without
+  touching the science, and so it can't drift from the schedule it describes.
+- `src/lib/*.test.ts` — tests, including the phase-response sign conventions
+  and DST handling.
 - `src/App.tsx` — currently renders a hardcoded demo trip.
 
 ## How the model works
@@ -45,9 +48,12 @@ The sign conventions that matter:
 
 - **Advance** = clock moves earlier = eastward. **Delay** = later = westward.
 - Light **after** CBTmin advances the clock; light **before** it delays.
-- Advances run ~1h/day, delays ~1.5h/day, so a large eastward shift is
-  sometimes faster handled as a westward delay. `computeShift` picks whichever
-  direction finishes sooner.
+- After arrival, advances run ~1h/day and delays ~1.5h/day, so a large
+  eastward shift is sometimes faster handled as a westward delay.
+  `computeShift` picks whichever direction finishes sooner.
+- Before arrival the traveler is still on home time, so shifting is capped at
+  1h/day and 3h in total; the remainder waits until landing, where local
+  daylight and meal times help.
 
 Tunable parameters live in `PARAMS` at the top of `circadian.ts`.
 
