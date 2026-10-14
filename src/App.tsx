@@ -8,6 +8,7 @@ import {
   type Trip,
 } from './lib/circadian'
 import { briefing } from './lib/briefing'
+import { SOURCES } from './lib/sources'
 import './App.css'
 
 // Placeholder trip. Step 3 replaces this with a real input form.
@@ -136,7 +137,21 @@ export default function App() {
       ))}
 
       <footer>
-        Educational tool based on published circadian research. Not medical advice.
+        <p>
+          Recommendations follow the published protocol of Eastman &amp; Burgess, with
+          exercise and meal timing from the sources below. Educational tool — not
+          medical advice.
+        </p>
+        <ul className="sources">
+          {SOURCES.map((s) => (
+            <li key={s.id}>
+              <a href={s.url} target="_blank" rel="noreferrer">
+                {s.citation}
+              </a>{' '}
+              — {s.basis}
+            </li>
+          ))}
+        </ul>
       </footer>
     </main>
   )

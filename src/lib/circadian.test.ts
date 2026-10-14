@@ -172,8 +172,8 @@ describe('plan: shifting', () => {
     const totalShifted = steps.reduce((acc, s) => acc + (s - 24), 0)
     expect(totalShifted).toBeCloseTo(8, 6)
     // 3h of the 8h happens before arrival at 1h/day, the remaining 5h after
-    // at 1.5h/day: 3 + 4 = 7 days of active shifting.
-    expect(p.daysToAdjust).toBe(7)
+    // at 2h/day (E&B delay rate): 3 + 3 = 6 days of active shifting.
+    expect(p.daysToAdjust).toBe(6)
   })
 
   it('starts the plan preTravelDays before departure', () => {
@@ -227,10 +227,15 @@ describe('plan: phase-response sign conventions', () => {
     expect(delaying.advice.some((a) => a.kind === 'melatonin')).toBe(false)
   })
 
-  it('omits melatonin and caffeine when the traveler opts out', () => {
-    const p = plan({ ...eastward, usesMelatonin: false, usesCaffeine: false })
+  it('omits melatonin when the traveler opts out', () => {
+    const p = plan({ ...eastward, usesMelatonin: false })
     expect(p.timeline.some((a) => a.kind === 'melatonin')).toBe(false)
-    expect(p.timeline.some((a) => a.kind === 'caffeine')).toBe(false)
+  })
+
+  it('never schedules caffeine — it is general sleep hygiene, not re-entrainment', () => {
+    for (const trip of [eastward, westward]) {
+      expect(plan(trip).timeline.some((a) => String(a.kind) === 'caffeine')).toBe(false)
+    }
   })
 })
 
@@ -324,7 +329,10 @@ describe('plan: day orientation', () => {
       for (const day of plan(trip).days) {
         const first = day.advice[0]
         const last = day.advice.at(-1)!
-        expect(first.start.getTime()).toBe(day.wake.getTime())
+        // Settled days open with the first meal (wake+0.5h); shifting days
+        // open with an at-wake window. Either way nothing precedes wake.
+        expect(first.start.getTime()).toBeGreaterThanOrEqual(day.wake.getTime())
+        expect(first.start.getTime() - day.wake.getTime()).toBeLessThanOrEqual(0.5 * 3.6e6)
         expect(last.kind).toBe('sleep')
         expect(last.start.getTime()).toBe(day.bed.getTime())
         // Nothing is scheduled outside the wake..sleep-end span.
@@ -386,12 +394,15 @@ describe('plan: day orientation', () => {
         )
       }
     }
-    // Post-arrival, sleep is local-anchored while CBTmin lags: on an advance,
-    // CBTmin catches up to or passes wake on early destination mornings,
-    // which is impossible under the fixed pre-arrival coupling.
+    // Post-arrival, sleep is local-anchored while CBTmin moves underneath,
+    // so the wake-to-CBTmin gap departs from the fixed pre-arrival coupling.
     const landedDays = p.days.filter((d) => d.wake.getTime() >= eastward.arriveUtc.getTime())
     expect(landedDays.length).toBeGreaterThan(0)
-    expect(landedDays.some((d) => d.cbtMin.getTime() >= d.wake.getTime())).toBe(true)
+    const offAxis = landedDays.filter((d) => {
+      const gapH = (d.wake.getTime() - d.cbtMin.getTime()) / 3.6e6
+      return Math.abs(gapH - PARAMS.cbtMinBeforeWakeHours) > 0.25
+    })
+    expect(offAxis.length).toBeGreaterThan(0)
   })
 })
 
@@ -447,7 +458,9 @@ describe('plan: flight overlap and structure', () => {
   })
 
   it('truncates absurdly long plans and says so', () => {
-    const p = plan({ ...eastward, destinationZone: 'Pacific/Kiritimati', strategy: 'advance' })
+    // Pitcairn is 1h behind LA; forcing an advance makes it a 23h advance,
+    // which cannot finish inside maxPlanDays even at E&B rates.
+    const p = plan({ ...eastward, destinationZone: 'Pacific/Pitcairn', strategy: 'advance' })
     expect(p.days.length).toBeLessThanOrEqual(PARAMS.maxPlanDays)
     expect(p.notes.join(' ')).toMatch(/truncated/)
   })
@@ -642,10 +655,12 @@ describe('plan: post-arrival local anchoring', () => {
   })
 
   it('splits the advancing morning around a lagging CBTmin', () => {
-    const p = plan(fromBeijing)
+    // Needs a large advance: the lag must exceed the Tmin-before-wake offset
+    // plus the easing, so force the 11h advance variant of an LA-Dubai hop.
+    const p = plan({ ...toBeijing, destinationZone: 'Asia/Dubai', strategy: 'advance' })
     const splitDay = p.days.find(
       (d) =>
-        d.wake.getTime() >= fromBeijing.arriveUtc.getTime() &&
+        d.wake.getTime() >= toBeijing.arriveUtc.getTime() &&
         d.cbtMin.getTime() > d.wake.getTime(),
     )
     expect(splitDay).toBeDefined()
@@ -716,8 +731,8 @@ describe('plan: Los Angeles <-> Beijing', () => {
     const p = plan(toBeijing)
     expect(p.shiftHours).toBe(-9)
     expect(p.direction).toBe('delay')
-    // 3h before arrival at 1h/day, then 6h at 1.5h/day.
-    expect(p.daysToAdjust).toBe(7)
+    // 3h before arrival at 1h/day, then 6h at the E&B 2h/day delay rate.
+    expect(p.daysToAdjust).toBe(6)
   })
 
   it('is a 9h advance in the other direction', () => {

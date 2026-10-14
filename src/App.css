@@ -141,7 +141,6 @@ li.sleep { border-color: #4a5aa8; }
 li.seek-light { border-color: #e8a317; }
 li.avoid-light { border-color: #5b4a8a; }
 li.melatonin { border-color: #3f8f6f; }
-li.caffeine { border-color: #8a6a4a; }
 li.exercise { border-color: #c2553f; }
 li.meal { border-color: #9a9a9a; }
 
@@ -152,3 +151,15 @@ footer {
   border-top: 1px solid #eee;
   padding-top: 1rem;
 }
+
+.sources { margin: 0.5rem 0 0; padding: 0; }
+.sources li {
+  display: list-item;
+  list-style: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: #999;
+}
+.sources a { color: #777; }

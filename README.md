@@ -39,18 +39,22 @@ site served from the domain root.
 
 ## How the model works
 
+The planner implements the practical protocol of **Eastman & Burgess (2009),
+"How To Travel the World Without Jet lag"** — see SCIENCE.md for the full
+recommendation-to-source mapping, including which numbers are our own choices.
+
 It simulates a single phase marker, CBTmin (core body temperature minimum),
-estimated at ~2h before habitual wake time. Every recommendation is positioned
-relative to wherever CBTmin currently sits, and CBTmin steps by a fixed amount
-each day until it matches the destination.
+estimated at ~3.5h before habitual wake time (E&B: 3-4.5h). Every
+recommendation is positioned relative to wherever CBTmin currently sits, and
+CBTmin steps by a fixed amount each day until it matches the destination.
 
 The sign conventions that matter:
 
 - **Advance** = clock moves earlier = eastward. **Delay** = later = westward.
 - Light **after** CBTmin advances the clock; light **before** it delays.
-- After arrival, advances run ~1h/day and delays ~1.5h/day, so a large
-  eastward shift is sometimes faster handled as a westward delay.
-  `computeShift` picks whichever direction finishes sooner.
+- After arrival, advances run ~1.5h/day and delays ~2h/day (E&B planning
+  rates), so a large eastward shift is sometimes faster handled as a westward
+  delay. `computeShift` picks whichever direction finishes sooner.
 - Before arrival the traveler is still on home time, so shifting is capped at
   1h/day and 3h in total; the remainder waits until landing, where local
   daylight and meal times help.
@@ -65,9 +69,10 @@ Tunable parameters live in `PARAMS` at the top of `circadian.ts`.
 
 ## Status
 
-The model parameters are first-pass approximations of published phase-response
-curves and have not yet been checked carefully against the literature. Prose
-content and a sourced review of the parameters are still to come.
+Core parameters now follow Eastman & Burgess (2009), with exercise timing from
+Youngstedt et al. (2019) and meal-timing rationale from Wehrens et al. (2017);
+SCIENCE.md is the source of truth for what traces where. Info-page prose is
+still to come.
 
 **Not medical advice.**
 

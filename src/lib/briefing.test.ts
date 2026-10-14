@@ -35,10 +35,10 @@ describe('briefing', () => {
 
   it('states the shift in plain terms, with the technical word in support', () => {
     expect(briefing(plan(base)).summary).toBe(
-      'Move your body clock 9 hours later (a delay) over about 7 days.',
+      'Move your body clock 9 hours later (a delay) over about 6 days.',
     )
     expect(briefing(plan(eastbound)).summary).toBe(
-      'Move your body clock 9 hours earlier (an advance) over about 9 days.',
+      'Move your body clock 9 hours earlier (an advance) over about 7 days.',
     )
   })
 
@@ -97,15 +97,16 @@ describe('briefing', () => {
     }
   })
 
-  it('carries the standing meal and caffeine rules that left the itinerary', () => {
+  it('carries the standing meal rules that left the itinerary', () => {
     const tips = briefing(plan(base)).tips
     expect(tips.some((t) => /dinner at least 3 hours before/.test(t))).toBe(true)
-    expect(tips.some((t) => /caffeine within 8 hours/i.test(t))).toBe(true)
+    expect(tips.some((t) => /meal timing helps/.test(t))).toBe(true)
   })
 
-  it('drops the caffeine tip when the traveler does not use caffeine', () => {
-    const tips = briefing(plan({ ...base, usesCaffeine: false })).tips
-    expect(tips.some((t) => /caffeine/i.test(t))).toBe(false)
+  it('never mentions caffeine — out of scope for circadian re-entrainment', () => {
+    for (const trip of [base, eastbound]) {
+      expect(briefing(plan(trip)).tips.some((t) => /caffeine/i.test(t))).toBe(false)
+    }
   })
 
   it('only mentions melatonin when it is actually scheduled', () => {

@@ -111,16 +111,20 @@ export function briefing(plan: Plan): Briefing {
     )
   }
 
-  tips.push('Finish dinner at least 3 hours before your target bedtime.')
-
-  if (plan.timeline.some((a) => a.kind === 'caffeine')) {
-    tips.push('No caffeine within 8 hours of your target bedtime.')
-  }
+  // Meal timing sets the body's peripheral clocks even though it does not
+  // move the central one (Wehrens 2017), hence: eat on the new schedule.
+  tips.push(
+    'Eat your meals on the schedule, especially the first one of the day — ' +
+      'meal timing helps the rest of your body fall in line with the new clock. ' +
+      'Finish dinner at least 3 hours before your target bedtime.',
+  )
 
   if (advancing && plan.timeline.some((a) => a.kind === 'melatonin')) {
     tips.push(
       'Melatonin here is for shifting your clock, not for sedation — a low ' +
-        '0.5 mg dose at the scheduled time does more than a large one at bedtime.',
+        '0.5 mg dose at the scheduled time works as well as larger doses, ' +
+        'with fewer side effects. (Skip the melatonin advice entirely if you ' +
+        'would rather not take it; the light timing does most of the work.)',
     )
   }
 

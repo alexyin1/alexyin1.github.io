@@ -34,31 +34,37 @@
 import { DateTime, Duration } from 'luxon'
 
 // --- Parameters ------------------------------------------------------------
-// All of these are first-pass estimates. Revisit against the literature.
+// Primary source: Eastman & Burgess (2009), "How To Travel the World Without
+// Jet lag", Sleep Med Clin 4(2):241-255 ("E&B" below). See SCIENCE.md for the
+// full recommendation-to-source mapping, including which numbers are ours.
 
 export const PARAMS = {
-  /** Hours CBTmin precedes habitual wake time. */
-  cbtMinBeforeWakeHours: 2,
   /**
-   * Max clock advance per day after arrival. Advances are hard: ~1h/day is
-   * about the physiological ceiling, so there is little headroom to be more
-   * aggressive once you land.
+   * Hours CBTmin precedes habitual wake time. E&B put Tmin 3-4.5h before wake
+   * after a full night; we use the middle of that range.
    */
-  advanceHoursPerDay: 1,
+  cbtMinBeforeWakeHours: 3.5,
   /**
-   * Max clock delay per day after arrival. Delays come easier than advances,
-   * because the free-running human clock is slightly longer than 24h.
+   * Max clock advance per day after arrival. E&B plan advances at ~1.5h/day
+   * when light (and melatonin) are correctly timed.
    */
-  delayHoursPerDay: 1.5,
+  advanceHoursPerDay: 1.5,
   /**
-   * Before departure the traveler still has work, school and family on home
-   * time, so shifting is capped at a gentler rate in both directions.
+   * Max clock delay per day after arrival. E&B plan delays at ~2h/day with
+   * well-timed light; delays come easier because the free-running human clock
+   * runs slightly longer than 24h.
+   */
+  delayHoursPerDay: 2,
+  /**
+   * Pre-flight shift rate. E&B's pre-adaptation protocols move bed and wake
+   * times 1h/day for the few days before departure.
    */
   preTravelHoursPerDay: 1,
   /**
-   * And capped in total: moving more than this before you fly is unpleasant
-   * and rarely sustained. The remainder is left for after arrival, where the
-   * destination's own light and social cues do most of the work.
+   * Total pre-flight shift cap. OURS, not E&B's: E&B describe 3-4 days of
+   * pre-shifting; we cap the total at 3h because moving further while holding
+   * a home work/family schedule rarely sticks. The remainder happens after
+   * arrival, where destination light and social cues help.
    */
   maxPreTravelShiftHours: 3,
   /**
@@ -66,7 +72,8 @@ export const PARAMS = {
    * time rather than tracking the body clock: sleep timing is behavior and
    * can jump, even though circadian phase cannot. The first nights are eased
    * in, offset toward the body clock by up to this many hours, shrinking by
-   * an hour a night (2h, 1h, 0 -- settled by the third night).
+   * an hour a night (2h, 1h, 0 -- settled by the third night). The snap to
+   * local time follows E&B's post-arrival framing; the easing amount is OURS.
    */
   arrivalEaseHours: 2,
   /** Don't produce schedules longer than this many days. */
@@ -85,7 +92,6 @@ export type AdviceKind =
   | 'seek-light'
   | 'avoid-light'
   | 'melatonin'
-  | 'caffeine'
   | 'exercise'
   | 'meal'
 
@@ -110,7 +116,6 @@ export interface Trip {
   /** How many days before departure the traveler is willing to start shifting. */
   preTravelDays?: number
   usesMelatonin?: boolean
-  usesCaffeine?: boolean
   /** Override the automatic eastward/westward strategy choice. */
   strategy?: 'auto' | 'advance' | 'delay'
 }
@@ -495,17 +500,18 @@ export function plan(trip: Trip): Plan {
     }
 
     // Once the shift is complete there is nothing left to push: settled days
-    // keep the sleep/caffeine/meal scaffolding but drop the shift advice.
+    // keep the sleep/meal scaffolding but drop the shift advice.
     const stillShifting = Math.abs(remainingAtStart) > 1e-9
 
-    // Notes stay terse: the standing rules (dinner before bed, caffeine
-    // cutoff, why light timing works) live in the trip briefing, so the
-    // itinerary only has to say what to do and when.
+    // Notes stay terse: the standing rules (dinner before bed, why light
+    // timing works) live in the trip briefing, so the itinerary only has to
+    // say what to do and when. Sources per recommendation are in SCIENCE.md.
     if (stillShifting && direction === 'advance') {
-      // Light after CBTmin advances; light before it delays. Pre-arrival,
-      // sleep tracks CBTmin so waking *is* just-after-CBTmin and the simple
-      // on-waking rule is exact. Post-arrival, sleep is on local time while
-      // CBTmin lags behind it, so the morning splits in two around CBTmin.
+      // Light after CBTmin advances; light before it delays (Khalsa 2003 PRC,
+      // as operationalized by E&B). Pre-arrival, sleep tracks CBTmin so
+      // waking is just-after-CBTmin and E&B's light-on-waking rule is exact.
+      // Post-arrival, sleep is on local time while CBTmin lags behind it, so
+      // the morning splits in two around CBTmin.
       const cbtAt = frames[i].cbt
       if (landed && cbtAt > wakeAt) {
         // The traveler wakes while their clock still reads night: early light
@@ -520,6 +526,8 @@ export function plan(trip: Trip): Plan {
         add('seek-light', cbtAt, cbtAt.plus(hours(3)), 'Bright light from here pulls your clock earlier.')
         add('exercise', cbtAt, cbtAt.plus(hours(2)), 'Exercise with the light.')
       } else {
+        // E&B pre-flight advance: bright light the first 3-4h after waking.
+        // Morning exercise also advances (Youngstedt 2019 exercise PRC).
         add(
           'seek-light',
           wakeAt,
@@ -533,27 +541,54 @@ export function plan(trip: Trip): Plan {
       // Evening light falls before tomorrow's CBTmin and would undo the advance.
       add('avoid-light', bedAt.minus(hours(4)), bedAt, 'Keep the evening dim.')
       if (trip.usesMelatonin !== false) {
+        // E&B advance protocol: 0.5 mg about 5h before bedtime (the low-dose
+        // melatonin PRC's advance region; Revell 2006 showed 0.5 mg matches
+        // 3 mg). The dose hour moves earlier with the shifting bedtime.
         const mel = bedAt.minus(hours(5))
         add('melatonin', mel, mel.plus(hours(1)), 'Low dose, 0.5 mg.')
       }
+      // No melatonin on delays: E&B leave it out of westward plans — no
+      // evidence it adds anything to well-timed light.
     } else if (stillShifting && direction === 'delay') {
-      // Light before CBTmin delays. Practically: bright light in the evening,
-      // which stays correct post-arrival too -- the lagging CBTmin sits in or
-      // after the local night, so the whole evening is on its delay side.
-      add('seek-light', bedAt.minus(hours(5)), bedAt, 'Bright light through the evening.')
-      // Morning light after CBTmin would undo the delay.
-      add('avoid-light', wakeAt, wakeAt.plus(hours(4)), 'Keep the morning dim.')
-      add('exercise', bedAt.minus(hours(6)), bedAt.minus(hours(3)), 'Late-afternoon exercise.')
+      if (landed) {
+        // Post-arrival the operative anchor is CBTmin, not the sleep window.
+        // Tonight's light delays only while it falls before tomorrow's CBTmin;
+        // the useful zone is roughly the 6h leading up to it, clipped to the
+        // waking evening.
+        const nextCbtAt = frames[i].nextCbt
+        const seekStart = nextCbtAt.minus(hours(6))
+        add(
+          'seek-light',
+          seekStart > wakeAt ? seekStart : wakeAt,
+          bedAt,
+          'Bright light until bedtime pushes your clock later.',
+        )
+        // Light in the ~6h after this morning's CBTmin would advance -- the
+        // wrong way. Once CBTmin has drifted deep into the night this window
+        // shrinks and eventually clears the morning entirely.
+        const cbtAt = frames[i].cbt
+        const avoidEnd = cbtAt.plus(hours(6))
+        if (avoidEnd > wakeAt) {
+          add(
+            'avoid-light',
+            cbtAt > wakeAt ? cbtAt : wakeAt,
+            avoidEnd < bedAt ? avoidEnd : bedAt,
+            'Keep the morning dim — early light here pushes your clock the wrong way.',
+          )
+        }
+      } else {
+        // E&B pre-flight delay: bright light the last 3-4h before bedtime.
+        add('seek-light', bedAt.minus(hours(4)), bedAt, 'Bright light through the evening.')
+        add('avoid-light', wakeAt, wakeAt.plus(hours(4)), 'Keep the morning dim.')
+      }
+      // Evening exercise delays (Youngstedt 2019: ~7-10pm region).
+      add('exercise', bedAt.minus(hours(4)), bedAt.minus(hours(1)), 'Evening exercise.')
     }
 
-    if (trip.usesCaffeine !== false) {
-      // Useful for alertness early in the waking day, but cut it well before bed.
-      const caffeineEnd = DateTime.min(wakeAt.plus(hours(5)), bedAt.minus(hours(8)))
-      add('caffeine', wakeAt, caffeineEnd, 'Caffeine window — nothing after this.')
-    }
-
-    // Only the first meal is scheduled. It is the one with real phase-setting
-    // value, and the dinner-before-bed rule is a standing tip, not a slot.
+    // Only the first meal is scheduled: meal timing sets peripheral clocks
+    // (Wehrens 2017), so eating on the new schedule helps the body fall in
+    // line even though it does not move the central clock. The
+    // dinner-before-bed rule is a standing tip, not a slot.
     add('meal', wakeAt.plus(hours(0.5)), wakeAt.plus(hours(1.5)), 'First meal.')
 
     // The day closes with the night's sleep, which runs into tomorrow.
