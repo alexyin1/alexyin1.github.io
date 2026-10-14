@@ -8,6 +8,8 @@ import {
   type Trip,
 } from './lib/circadian'
 import { briefing } from './lib/briefing'
+import { KIND_EMOJI } from './lib/visual'
+import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
 import './App.css'
 
@@ -50,6 +52,7 @@ function PlaceTag({ place }: { place: Place }) {
 
 export default function App() {
   const [clock, setClock] = useClockFormat()
+  const [visDay, setVisDay] = useState(0)
   const result = plan(demoTrip)
   const brief = briefing(result)
 
@@ -91,6 +94,32 @@ export default function App() {
         ))}
       </section>
 
+      <h2 className="itinerary-head">What the plan is doing</h2>
+
+      <div className="vis-controls">
+        <label htmlFor="dayslider">
+          Day {visDay + 1} of {result.days.length} — {result.days[visDay].date}{' '}
+          <span className="zone">({result.days[visDay].place.label})</span>
+        </label>
+        <input
+          id="dayslider"
+          type="range"
+          min={0}
+          max={result.days.length - 1}
+          value={visDay}
+          onChange={(e) => setVisDay(Number(e.target.value))}
+        />
+      </div>
+      <DayVisual
+        plan={result}
+        day={result.days[visDay]}
+        clock={clock}
+        originZone={demoTrip.originZone}
+        destinationZone={demoTrip.destinationZone}
+        habitualBedLocal={demoTrip.habitualBedLocal}
+        habitualWakeLocal={demoTrip.habitualWakeLocal}
+      />
+
       <h2 className="itinerary-head">Day by day</h2>
 
       {result.days.map((day) => (
@@ -126,7 +155,10 @@ export default function App() {
                     </span>
                   )}
                 </span>
-                <span className="kind">{a.kind.replace('-', ' ')}</span>
+                <span className="kind">
+                  <span className="k-emoji" aria-hidden="true">{KIND_EMOJI[a.kind]}</span>{' '}
+                  {a.kind.replace('-', ' ')}
+                </span>
                 <span className="note">
                   {a.note}
                   {a.inFlight ? ' (in flight)' : ''}

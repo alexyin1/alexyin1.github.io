@@ -173,3 +173,60 @@ footer {
   color: #999;
 }
 .sources a { color: #777; }
+
+/* --- Day infographic ------------------------------------------------- */
+
+.vis-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.vis-controls label { font-size: 0.9rem; color: #444; }
+.vis-controls input[type='range'] { flex: 1; min-width: 10rem; accent-color: #4a5aa8; }
+
+.dayvis {
+  margin: 0;
+  padding: 0.75rem 0.5rem 0.5rem;
+  background: #fbfbfa;
+  border: 1px solid #eee;
+  border-radius: 6px;
+}
+
+.dayvis svg { width: 100%; height: auto; display: block; }
+
+.dayvis .rowlab { font-size: 11px; fill: #888; text-anchor: end; }
+.dayvis .tick { font-size: 10px; fill: #999; }
+.dayvis .gridline { stroke: #000; stroke-opacity: 0.05; }
+.dayvis .emoji { font-size: 12px; }
+
+.dayvis .curve { fill: none; stroke-width: 2; }
+.dayvis .curve.today { stroke: #c2553f; }
+.dayvis .curve.goal { stroke: #bbb; stroke-dasharray: 5 4; stroke-width: 1.5; }
+.dayvis .tmin.today { fill: #c2553f; }
+.dayvis .tmin.goal { fill: none; stroke: #999; stroke-dasharray: 2 2; }
+.dayvis .annot { font-size: 10px; fill: #c2553f; }
+.dayvis .annot.goal { fill: #999; }
+
+.dayvis .sleepbar { fill: #4a5aa8; opacity: 0.9; }
+.dayvis .sleepref { fill: none; stroke-width: 1.5; }
+.dayvis .sleepref.home { stroke: #b6886a; stroke-dasharray: 3 3; }
+.dayvis .sleepref.dest { stroke: #3f8f6f; stroke-dasharray: 3 3; }
+
+.dayvis .nightband { fill: #2e3350; opacity: 0.85; }
+.dayvis .dayband { fill: #ffe9a8; }
+
+.dayvis figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: #666;
+  line-height: 1.45;
+}
+
+/* Slide transitions: elements keep identity across days, so position
+   changes animate. Path shapes jump (CSS cannot morph d), which is fine. */
+.dayvis rect, .dayvis circle, .dayvis text { transition: x 0.4s, cx 0.4s, width 0.4s; }
+
+.k-emoji { font-size: 0.95em; }
