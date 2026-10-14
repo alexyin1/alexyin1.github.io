@@ -38,7 +38,17 @@ export function briefing(plan: Plan): Briefing {
   }
 
   const advancing = plan.direction === 'advance'
-  const headline = plan.travelDirection === 'eastward' ? 'Eastward travel' : 'Westward travel'
+
+  // On long eastward hops the clock is sometimes taken the other way round
+  // (see Plan.travelDirection). When that happens the headline carries both
+  // facts up front, instead of saying 'Eastward' over westward-style advice.
+  const strategyDisagrees =
+    (plan.travelDirection === 'eastward' && !advancing) ||
+    (plan.travelDirection === 'westward' && advancing)
+  const travelWord = plan.travelDirection === 'eastward' ? 'Eastward' : 'Westward'
+  const headline = strategyDisagrees
+    ? `${travelWord} travel · ${advancing ? 'eastward' : 'westward'} shift`
+    : `${travelWord} travel`
 
   // 'Advance' and 'delay' are the terms the literature uses, and they are
   // worth teaching -- but lead with earlier/later, which needs no gloss.
@@ -81,10 +91,16 @@ export function briefing(plan: Plan): Briefing {
     )
   }
 
+  // What the first nights actually feel like, so odd hours read as intended
+  // rather than as the plan failing.
+  tips.push(
+    `The first couple of nights at the destination are deliberately up to ` +
+      `${PARAMS.arrivalEaseHours} hours off the local norm, easing onto local time. ` +
+      `If you are wide awake in the small hours or fading early, that is your ` +
+      `clock still traveling — hold the light timing and it passes.`,
+  )
+
   // The strategy surprise, when it applies.
-  const strategyDisagrees =
-    (plan.travelDirection === 'eastward' && !advancing) ||
-    (plan.travelDirection === 'westward' && advancing)
   if (strategyDisagrees) {
     tips.push(
       `You are flying ${plan.travelDirection.replace('ward', '')}, but it is faster ` +

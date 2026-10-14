@@ -121,6 +121,19 @@ li {
 .span { color: #888; font-weight: normal; font-size: 0.85em; margin-left: auto; }
 
 .window { font-variant-numeric: tabular-nums; color: #333; }
+
+.alt-window {
+  display: block;
+  color: #999;
+  font-size: 0.85em;
+}
+
+.transit-note {
+  margin: 0.2rem 0 0.5rem;
+  color: #888;
+  font-size: 0.85rem;
+  font-style: italic;
+}
 .kind { text-transform: capitalize; font-weight: 600; }
 .note { color: #666; }
 

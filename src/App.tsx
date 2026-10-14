@@ -96,15 +96,34 @@ export default function App() {
         <section key={day.index}>
           <h2>
             Day {day.index + 1} — {day.date} <PlaceTag place={day.place} />
+            {day.otherPlace && (
+              <>
+                {' / '}
+                <PlaceTag place={day.otherPlace} />
+              </>
+            )}
             <span className="span">
               up {formatTime(day.wake, day.zone, clock)} → bed{' '}
               {formatTime(day.bed, day.zone, clock)}
             </span>
           </h2>
+          {day.transit && (
+            <p className="transit-note">
+              Travel day — times shown in both {day.place.label} and{' '}
+              {day.otherPlace!.label} clocks.
+            </p>
+          )}
           <ul>
             {day.advice.map((a, i) => (
               <li key={i} className={a.kind}>
-                <span className="window">{formatWindow(a, clock)}</span>
+                <span className="window">
+                  {formatWindow(a, clock)}
+                  {day.otherPlace && (
+                    <span className="alt-window">
+                      {formatWindow(a, clock, day.otherPlace.zone)} {day.otherPlace.label}
+                    </span>
+                  )}
+                </span>
                 <span className="kind">{a.kind.replace('-', ' ')}</span>
                 <span className="note">
                   {a.note}

@@ -14,6 +14,14 @@
  * crosses local midnight. Each day therefore contains exactly one CBTmin,
  * `nextCbtMin`, sitting inside that trailing sleep.
  *
+ * Sleep timing and circadian phase are different things, and only phase is
+ * rate-limited. Before the flight, shifting the sleep schedule *is* the
+ * mechanism, so sleep tracks CBTmin. After arrival, sleep is behavior: it
+ * snaps to the habitual schedule in destination time (eased in over the first
+ * couple of nights), while CBTmin keeps moving at its physiological rate
+ * underneath and the light windows -- now keyed to CBTmin, not to sleep -- do
+ * the circadian work.
+ *
  * Sign conventions, which are the easiest thing to get backwards:
  *   - ADVANCE  = clock moves earlier = eastward travel.
  *   - DELAY    = clock moves later   = westward travel.
@@ -53,6 +61,14 @@ export const PARAMS = {
    * destination's own light and social cues do most of the work.
    */
   maxPreTravelShiftHours: 3,
+  /**
+   * After arrival, recommended sleep snaps to the habitual schedule in local
+   * time rather than tracking the body clock: sleep timing is behavior and
+   * can jump, even though circadian phase cannot. The first nights are eased
+   * in, offset toward the body clock by up to this many hours, shrinking by
+   * an hour a night (2h, 1h, 0 -- settled by the third night).
+   */
+  arrivalEaseHours: 2,
   /** Don't produce schedules longer than this many days. */
   maxPlanDays: 16,
 }
@@ -146,6 +162,13 @@ export interface PlanDay {
   nextCbtMin: Date
   /** Hours still to shift at the start of this day (signed). */
   remainingShiftHours: number
+  /** True if this day overlaps the flight. */
+  transit: boolean
+  /**
+   * On transit days only: the other endpoint, so the UI can show the day in
+   * both origin and destination time.
+   */
+  otherPlace?: Place
   advice: Advice[]
 }
 
@@ -259,8 +282,15 @@ export function computeShift(trip: Trip): {
   // The same destination phase is reachable either way around the clock.
   const alternative = advanceOption > 0 ? advanceOption - 24 : advanceOption + 24
 
-  const daysFor = (s: number) =>
-    s > 0 ? s / PARAMS.advanceHoursPerDay : -s / PARAMS.delayHoursPerDay
+  // Estimated days to complete a shift, accounting for the slower pre-travel
+  // phase: the first hours happen at the capped home rate regardless of
+  // direction, which moves the advance/delay breakeven from 9.6h to ~10.2h.
+  const daysFor = (s: number) => {
+    const mag = Math.abs(s)
+    const pre = Math.min(PARAMS.maxPreTravelShiftHours, mag)
+    const rate = s > 0 ? PARAMS.advanceHoursPerDay : PARAMS.delayHoursPerDay
+    return pre / PARAMS.preTravelHoursPerDay + (mag - pre) / rate
+  }
 
   let shiftHours: number
   if (forced === 'advance') shiftHours = advanceOption > 0 ? advanceOption : alternative
@@ -327,18 +357,43 @@ export function plan(trip: Trip): Plan {
     step: number
   }
 
+  /**
+   * Tonight's bedtime anchored to the destination's wall clock: the habitual
+   * bed time in destination-local terms, offset by `easeHours` toward the
+   * body clock, on the first such instant after `after`.
+   */
+  const anchoredBed = (after: DateTime, easeHours: number): DateTime => {
+    let candidate = after
+      .setZone(trip.destinationZone)
+      .startOf('day')
+      .set({ hour: bed.hour, minute: bed.minute, second: 0, millisecond: 0 })
+      .plus(hours(easeHours))
+    while (candidate <= after) candidate = candidate.plus({ days: 1 })
+    return candidate
+  }
+
   const frames: Frame[] = []
   let remaining = shiftHours
   let preTravelShiftUsed = 0
+  let anchoredNights = 0
   let completedOnDay = -1
+  // Wake is carried separately from CBTmin: they track each other before the
+  // flight, but decouple once sleep snaps to destination time.
+  let wakeCursor: DateTime = cbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
 
   for (let i = 0; i < PARAMS.maxPlanDays; i++) {
-    const wakeAt = cbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
+    const wakeAt = wakeCursor
     const landed = wakeAt.toJSDate() >= trip.arriveUtc
+    // Tonight is spent at the destination if a body-schedule bedtime estimate
+    // falls after arrival. This covers the travel day, whose waking hours
+    // start at home but whose night is the first one in the new zone.
+    const estimatedBed = wakeAt.plus(hours(24 - sleepHours))
+    const nightAtDestination = estimatedBed.toJSDate() >= trip.arriveUtc
 
-    // Before arrival the traveler is still living on home time, so shifting
-    // is slower and capped in total; afterwards the full rate applies.
-    const allowance = landed
+    // Before that first destination night the traveler is still living on
+    // home time, so shifting is slower and capped in total; afterwards the
+    // destination's own light and social cues support the full rate.
+    const allowance = nightAtDestination
       ? arrivalRate
       : Math.min(
           PARAMS.preTravelHoursPerDay,
@@ -346,7 +401,7 @@ export function plan(trip: Trip): Plan {
         )
     const magnitude = Math.min(allowance, Math.abs(remaining))
     const step = Math.sign(remaining) * magnitude
-    if (!landed) preTravelShiftUsed += magnitude
+    if (!nightAtDestination) preTravelShiftUsed += magnitude
 
     // A plan day runs from waking to falling asleep, the way a person
     // experiences it -- so the trailing sleep window belongs to this day even
@@ -356,9 +411,29 @@ export function plan(trip: Trip): Plan {
     // An advance (positive) moves CBTmin *earlier*, hence the subtraction.
     // `plus({ days: 1 })` is calendar-aware, so local wake time survives DST.
     const nextCbt = cbt.plus({ days: 1 }).minus(hours(step))
-    const nextWake = nextCbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
-    // Tonight's bedtime, back-computed so sleep duration stays habitual.
-    const bedAt = nextWake.minus(hours(sleepHours))
+    const remainingAfter = remaining - step
+
+    let bedAt: DateTime
+    let nextWake: DateTime
+    if (nightAtDestination) {
+      // Local-anchored night: habitual destination bedtime, offset toward the
+      // body clock by an allowance that shrinks an hour a night (2h, 1h, 0).
+      // The offset is signed like the shift: an advancing traveler gets a
+      // *later* first bedtime, a delaying one an *earlier* crash.
+      const ease =
+        Math.sign(remainingAfter) *
+        Math.min(Math.abs(remainingAfter), Math.max(0, PARAMS.arrivalEaseHours - anchoredNights))
+      bedAt = anchoredBed(wakeAt, ease)
+      // A late-evening arrival can put the eased bedtime before the plane is
+      // on the ground; you sleep when you land, not mid-descent.
+      if (bedAt.toJSDate() < trip.arriveUtc) bedAt = arrive.setZone(trip.destinationZone)
+      nextWake = bedAt.plus(hours(sleepHours))
+      anchoredNights += 1
+    } else {
+      // Body-schedule night: sleep tracks the shifting CBTmin.
+      nextWake = nextCbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
+      bedAt = nextWake.minus(hours(sleepHours))
+    }
 
     frames.push({
       cbt,
@@ -371,9 +446,10 @@ export function plan(trip: Trip): Plan {
       step,
     })
 
-    remaining -= step
+    remaining = remainingAfter
     if (completedOnDay < 0 && Math.abs(remaining) < 1e-9) completedOnDay = i
     cbt = nextCbt
+    wakeCursor = nextWake
   }
 
   const daysNeeded = frames.filter((f) => f.step !== 0).length
@@ -418,22 +494,52 @@ export function plan(trip: Trip): Plan {
       })
     }
 
+    // Once the shift is complete there is nothing left to push: settled days
+    // keep the sleep/caffeine/meal scaffolding but drop the shift advice.
+    const stillShifting = Math.abs(remainingAtStart) > 1e-9
+
     // Notes stay terse: the standing rules (dinner before bed, caffeine
     // cutoff, why light timing works) live in the trip briefing, so the
     // itinerary only has to say what to do and when.
-    if (direction === 'advance') {
-      // Light after CBTmin advances. Practically: bright light on waking,
-      // just after the CBTmin that ended last night's sleep.
-      add('seek-light', wakeAt, wakeAt.plus(hours(3)), 'Bright light on waking, outdoors if you can.')
+    if (stillShifting && direction === 'advance') {
+      // Light after CBTmin advances; light before it delays. Pre-arrival,
+      // sleep tracks CBTmin so waking *is* just-after-CBTmin and the simple
+      // on-waking rule is exact. Post-arrival, sleep is on local time while
+      // CBTmin lags behind it, so the morning splits in two around CBTmin.
+      const cbtAt = frames[i].cbt
+      if (landed && cbtAt > wakeAt) {
+        // The traveler wakes while their clock still reads night: early light
+        // would push the wrong way until CBTmin passes.
+        const morningCap = wakeAt.plus(hours(4))
+        add(
+          'avoid-light',
+          wakeAt,
+          cbtAt < morningCap ? cbtAt : morningCap,
+          'Keep the early morning dim — your clock still reads it as night.',
+        )
+        add('seek-light', cbtAt, cbtAt.plus(hours(3)), 'Bright light from here pulls your clock earlier.')
+        add('exercise', cbtAt, cbtAt.plus(hours(2)), 'Exercise with the light.')
+      } else {
+        add(
+          'seek-light',
+          wakeAt,
+          wakeAt.plus(hours(3)),
+          landed
+            ? 'Seek light as soon as you wake — open the blinds or take a morning walk.'
+            : 'Bright light on waking, outdoors if you can.',
+        )
+        add('exercise', wakeAt, wakeAt.plus(hours(2)), 'Morning exercise.')
+      }
       // Evening light falls before tomorrow's CBTmin and would undo the advance.
       add('avoid-light', bedAt.minus(hours(4)), bedAt, 'Keep the evening dim.')
-      add('exercise', wakeAt, wakeAt.plus(hours(2)), 'Morning exercise.')
       if (trip.usesMelatonin !== false) {
         const mel = bedAt.minus(hours(5))
         add('melatonin', mel, mel.plus(hours(1)), 'Low dose, 0.5 mg.')
       }
-    } else if (direction === 'delay') {
-      // Light before CBTmin delays. Practically: bright light in the evening.
+    } else if (stillShifting && direction === 'delay') {
+      // Light before CBTmin delays. Practically: bright light in the evening,
+      // which stays correct post-arrival too -- the lagging CBTmin sits in or
+      // after the local night, so the whole evening is on its delay side.
       add('seek-light', bedAt.minus(hours(5)), bedAt, 'Bright light through the evening.')
       // Morning light after CBTmin would undo the delay.
       add('avoid-light', wakeAt, wakeAt.plus(hours(4)), 'Keep the morning dim.')
@@ -455,6 +561,16 @@ export function plan(trip: Trip): Plan {
 
     advice.sort((a, b) => a.start.getTime() - b.start.getTime())
 
+    // A day that overlaps the flight is shown in both endpoint clocks, since
+    // the traveler wakes in one and goes to bed in the other.
+    const transit =
+      wakeAt.toJSDate() < trip.arriveUtc && nextWake.toJSDate() > trip.departUtc
+    const otherPlace = transit
+      ? landed
+        ? makePlace(trip.originZone, trip.originLabel, wakeAt.toJSDate())
+        : makePlace(trip.destinationZone, trip.destinationLabel, wakeAt.toJSDate())
+      : undefined
+
     days.push({
       index: i,
       // Labelled by the morning the traveler wakes up, not by when the
@@ -467,6 +583,8 @@ export function plan(trip: Trip): Plan {
       cbtMin: frames[i].cbt.toJSDate(),
       nextCbtMin: frames[i].nextCbt.toJSDate(),
       remainingShiftHours: remainingAtStart,
+      transit,
+      otherPlace,
       advice,
     })
   }
@@ -502,16 +620,22 @@ export function formatTime(at: Date, zone: string, clock: ClockFormat = '24h'): 
 }
 
 /**
- * Format an advice window for display, in its own zone. A window that ends on
- * a later local date -- a sleep window, usually -- is marked '+1', since
- * otherwise 'Mon 23:00–07:00' reads as going backwards.
+ * Format an advice window for display. A window that ends on a later local
+ * date -- a sleep window, usually -- is marked '+1', since otherwise
+ * 'Mon 23:00–07:00' reads as going backwards. `zoneOverride` renders the same
+ * instants in another zone, used to show transit days in both endpoint clocks.
  */
-export function formatWindow(a: Advice, clock: ClockFormat = '24h'): string {
-  const s = DateTime.fromJSDate(a.start, { zone: a.zone })
-  const e = DateTime.fromJSDate(a.end, { zone: a.zone })
+export function formatWindow(
+  a: Advice,
+  clock: ClockFormat = '24h',
+  zoneOverride?: string,
+): string {
+  const zone = zoneOverride ?? a.zone
+  const s = DateTime.fromJSDate(a.start, { zone })
+  const e = DateTime.fromJSDate(a.end, { zone })
   const crossesMidnight = !e.hasSame(s, 'day')
   return (
-    `${s.toFormat('EEE')} ${formatTime(a.start, a.zone, clock)}–` +
-    `${formatTime(a.end, a.zone, clock)}${crossesMidnight ? ' +1' : ''}`
+    `${s.toFormat('EEE')} ${formatTime(a.start, zone, clock)}–` +
+    `${formatTime(a.end, zone, clock)}${crossesMidnight ? ' +1' : ''}`
   )
 }

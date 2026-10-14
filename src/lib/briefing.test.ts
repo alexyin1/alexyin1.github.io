@@ -28,6 +28,11 @@ describe('briefing', () => {
     expect(briefing(plan(eastbound)).headline).toBe('Eastward travel')
   })
 
+  it('carries both directions in the headline when they disagree', () => {
+    const dubai = plan({ ...base, destinationZone: 'Asia/Dubai', destinationLabel: 'Dubai' })
+    expect(briefing(dubai).headline).toBe('Eastward travel · westward shift')
+  })
+
   it('states the shift in plain terms, with the technical word in support', () => {
     expect(briefing(plan(base)).summary).toBe(
       'Move your body clock 9 hours later (a delay) over about 7 days.',
