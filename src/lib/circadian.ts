@@ -167,6 +167,11 @@ export interface PlanDay {
   nextCbtMin: Date
   /** Hours still to shift at the start of this day (signed). */
   remainingShiftHours: number
+  /**
+   * True once the traveler is at the destination with no shift remaining:
+   * the clock is synchronized and ordinary sleep habits are all that's left.
+   */
+  adapted: boolean
   /** True if this day overlaps the flight. */
   transit: boolean
   /**
@@ -618,6 +623,7 @@ export function plan(trip: Trip): Plan {
       cbtMin: frames[i].cbt.toJSDate(),
       nextCbtMin: frames[i].nextCbt.toJSDate(),
       remainingShiftHours: remainingAtStart,
+      adapted: landed && !stillShifting,
       transit,
       otherPlace,
       advice,

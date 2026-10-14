@@ -683,6 +683,22 @@ describe('plan: post-arrival local anchoring', () => {
     }
   })
 
+  it('flags adapted days: at the destination with nothing left to shift', () => {
+    for (const trip of [toBeijing, fromBeijing]) {
+      const p = plan(trip)
+      const last = p.days.at(-1)!
+      expect(last.adapted).toBe(true)
+      for (const d of p.days) {
+        expect(d.adapted).toBe(
+          d.wake.getTime() >= trip.arriveUtc.getTime() &&
+            Math.abs(d.remainingShiftHours) < 1e-9,
+        )
+      }
+      // Never flagged while still shifting or still at home.
+      expect(p.days[0].adapted).toBe(false)
+    }
+  })
+
   it('drops shift advice once adaptation is complete', () => {
     for (const trip of [toBeijing, fromBeijing]) {
       const p = plan(trip)

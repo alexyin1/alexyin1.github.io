@@ -97,12 +97,6 @@ export default function App() {
         <section key={day.index}>
           <h2>
             Day {day.index + 1} — {day.date} <PlaceTag place={day.place} />
-            {day.otherPlace && (
-              <>
-                {' / '}
-                <PlaceTag place={day.otherPlace} />
-              </>
-            )}
             <span className="span">
               up {formatTime(day.wake, day.zone, clock)} → bed{' '}
               {formatTime(day.bed, day.zone, clock)}
@@ -112,6 +106,13 @@ export default function App() {
             <p className="transit-note">
               Travel day — times shown in both {day.place.label} and{' '}
               {day.otherPlace!.label} clocks.
+            </p>
+          )}
+          {day.adapted && (
+            <p className="adapted-note">
+              Your circadian clock should now be synchronized to local time.
+              Regular sleep habits are enough from here — no extra jet-lag
+              measures needed.
             </p>
           )}
           <ul>
