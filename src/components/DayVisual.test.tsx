@@ -54,8 +54,9 @@ describe('DayVisual', () => {
 
   it('keeps the axis rigid while CBTmin moves across it', () => {
     const p = plan(trips[0])
+    // Position 0 is the untouched baseline; days.length is the final day.
     const first = render(trips[0], 0)
-    const last = render(trips[0], p.days.length - 1)
+    const last = render(trips[0], p.days.length)
     // Goal marker and axis labels are identical on both...
     expect(goalTminX(first)).toBe(goalTminX(last))
     expect(first).toContain('>12:00</text>')
@@ -75,12 +76,23 @@ describe('DayVisual', () => {
     expect(mid).toBeCloseTo((a + b) / 2, 0)
   })
 
-  it('labels the day by the nearest whole day, so text does not flicker', () => {
+  it('labels the day by the nearest whole position, with 0 as baseline', () => {
     const label = (pos: number) => /aria-label="Circadian chart for day (\d+)"/.exec(render(trips[0], pos))![1]
-    expect(label(2)).toBe('3')
-    expect(label(2.4)).toBe('3')
-    expect(label(2.6)).toBe('4')
-    expect(label(3)).toBe('4')
+    expect(label(0)).toBe('0')
+    expect(label(0.4)).toBe('0')
+    expect(label(2)).toBe('2')
+    expect(label(2.4)).toBe('2')
+    expect(label(2.6)).toBe('3')
+    expect(label(3)).toBe('3')
+  })
+
+  it('shows the baseline with habitual sleep and no advice windows', () => {
+    const html = render(trips[0], 0)
+    // No seek/avoid windows exist before the plan starts.
+    expect(html).not.toContain('fill="#e8a317"')
+    expect(html).not.toContain('fill="#5b4a8a"')
+    // The full shift is still ahead.
+    expect(html).toContain('About 9.0h of shifting left')
   })
 
   it('puts origin time above destination time on the axis', () => {
@@ -105,12 +117,11 @@ describe('DayVisual', () => {
   })
 
   it('colour-codes CBTmin in the caption to match the curve', () => {
-    for (const pos of [0, plan(trips[0]).days.length - 1]) {
+    for (const pos of [0, plan(trips[0]).days.length]) {
       const html = render(trips[0], pos)
-      // Every caption mention is tagged, both the definition and the prose.
-      expect(html).toContain('class="cbt"')
+      // Only the defining mention is tinted; the rest of the prose is plain.
       const tagged = (html.match(/class="cbt">CBTmin</g) ?? []).length
-      expect(tagged).toBeGreaterThanOrEqual(3)
+      expect(tagged).toBe(1)
     }
   })
 
@@ -126,6 +137,6 @@ describe('DayVisual', () => {
 
   it('says CBTmin has arrived on the final day', () => {
     const p = plan(trips[0])
-    expect(render(trips[0], p.days.length - 1)).toContain('has arrived on destination time')
+    expect(render(trips[0], p.days.length)).toContain('has arrived on destination time')
   })
 })

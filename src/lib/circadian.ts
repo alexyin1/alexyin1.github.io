@@ -61,6 +61,13 @@ export const PARAMS = {
    */
   preTravelHoursPerDay: 1,
   /**
+   * Hours of shift assumed to resolve at the destination without pre-travel
+   * preparation. OURS: small misalignments are absorbed by destination cues
+   * on their own (and under 2h is beneath the CDC's jet-lag threshold), so
+   * pre-travel days are only scheduled for the hours beyond this.
+   */
+  destinationFreeShiftHours: 2,
+  /**
    * Total pre-flight shift cap. OURS, not E&B's: E&B describe 3-4 days of
    * pre-shifting; we cap the total at 3h because moving further while holding
    * a home work/family schedule rarely sticks. The remainder happens after
@@ -339,7 +346,22 @@ export function plan(trip: Trip): Plan {
   let sleepHours = wake.hour + wake.minute / 60 - (bed.hour + bed.minute / 60)
   if (sleepHours <= 0) sleepHours += 24
 
-  const preTravelDays = Math.max(0, Math.min(trip.preTravelDays ?? 3, 7))
+  // Only schedule the pre-travel days actually needed: the first couple of
+  // hours of shift resolve at the destination without preparation, so a 3h
+  // hop needs one pre-travel day, not three.
+  const preTravelDaysNeeded =
+    Math.abs(shiftHours) > PARAMS.destinationFreeShiftHours
+      ? Math.ceil(
+          (Math.abs(shiftHours) - PARAMS.destinationFreeShiftHours) /
+            PARAMS.preTravelHoursPerDay,
+        )
+      : Math.abs(shiftHours) > 1e-9
+        ? 0
+        : Number.POSITIVE_INFINITY // zero-shift plans keep the requested window
+  const preTravelDays = Math.max(
+    0,
+    Math.min(trip.preTravelDays ?? 3, 7, preTravelDaysNeeded),
+  )
 
   // Day 0 is `preTravelDays` before departure, in the origin zone.
   const day0 = depart.setZone(trip.originZone).startOf('day').minus({ days: preTravelDays })

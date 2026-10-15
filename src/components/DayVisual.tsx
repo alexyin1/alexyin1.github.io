@@ -45,7 +45,7 @@ const ADVICE_COLORS: Record<string, string> = {
 
 interface Props {
   plan: Plan
-  /** Fractional day position; 2.5 is halfway between days 3 and 4. */
+  /** Fractional position on 0..days.length; 0 is the baseline day 0. */
   pos: number
   clock: ClockFormat
   originZone: string
@@ -79,7 +79,7 @@ export default function DayVisual(props: Props) {
   return (
     <figure className="dayvis">
       <svg viewBox={`0 0 ${W} ${H}`} role="img"
-        aria-label={`Circadian chart for day ${frame.dayIndex + 1}`}>
+        aria-label={`Circadian chart for day ${frame.dayIndex}`}>
         {ticks.map((t, i) => (
           <line key={`g${i}`} x1={px(t.f)} x2={px(t.f)} y1={CURVE_TOP} y2={AXIS_Y}
             className="gridline" />
@@ -105,19 +105,19 @@ export default function DayVisual(props: Props) {
         </text>
 
         {/* light windows, with point events marked above */}
-        {frame.windows.flatMap((w, i) =>
+        {frame.windows.filter((w) => w.opacity > 0.01).flatMap((w, i) =>
           rects(w.segs).map((r, j) => (
             <rect key={`w${i}-${j}`} x={r.x} y={ROW_ADVICE} width={r.width} height={ADVICE_H}
               rx={4} fill={ADVICE_COLORS[w.kind]} opacity={0.85 * w.opacity} />
           )),
         )}
-        {frame.windows.map((w, i) => (
+        {frame.windows.filter((w) => w.opacity > 0.01).map((w, i) => (
           <text key={`we${i}`} className="emoji" x={px(w.startF) + 4} y={ROW_ADVICE + 17}
             opacity={w.opacity}>
             {KIND_EMOJI[w.kind]}
           </text>
         ))}
-        {frame.points.map((w, i) => (
+        {frame.points.filter((w) => w.opacity > 0.01).map((w, i) => (
           <text key={`pe${i}`} className="emoji" x={px(w.startF) - 8} y={ROW_ADVICE - 8}
             opacity={w.opacity}>
             {KIND_EMOJI[w.kind]}
@@ -200,22 +200,18 @@ export default function DayVisual(props: Props) {
           shifts it using external cues — light, food, exercise and melatonin.
         </p>
         <p>
-          The axis is fixed to {plan.destination.label} time, so everything else moves.
-          The solid wave is your <span className="cbt">CBTmin</span> rhythm today; the
-          dashed wave and outline mark where your <span className="cbt">CBTmin</span>{' '}
-          and sleep need to end up.{' '}
+          The solid wave is your CBTmin rhythm on the given day. The dashed lines
+          indicate where CBTmin and sleep should end up. The movement over days
+          indicates the direction and magnitude of the intended shift in circadian
+          rhythm.{' '}
           {frame.remainingHours > 0.05 ? (
             <>
               About {frame.remainingHours.toFixed(1)}h of shifting left — the{' '}
               {KIND_EMOJI['seek-light']} and {KIND_EMOJI['avoid-light']} windows sit on
-              the side of <span className="cbt">CBTmin</span> that pushes it the right
-              way.
+              the side of CBTmin that pushes it the right way.
             </>
           ) : (
-            <>
-              The two now line up: your <span className="cbt">CBTmin</span> has arrived
-              on destination time.
-            </>
+            <>The two now line up: your CBTmin has arrived on destination time.</>
           )}
         </p>
       </figcaption>

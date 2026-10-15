@@ -41,6 +41,7 @@ low-dose melatonin for advances.
 | Choice | Where in code | Rationale |
 |---|---|---|
 | Pre-flight shift capped at 3h total | `PARAMS.maxPreTravelShiftHours` | E&B describe 3–4 days of pre-shifting; we cap total displacement because shifting further while holding home work/family schedules rarely sticks. |
+| ~2h of shift absorbed at the destination without preparation | `PARAMS.destinationFreeShiftHours` | Aligned with the CDC two-zone threshold: small misalignments resolve from destination cues alone, so pre-travel days are only scheduled for the hours beyond this (a 3h hop gets one pre-travel day, not three). Shifts of ≤2h get no plan at all (`needsPlan`). |
 | Post-arrival sleep snaps to local schedule, eased by 2h/1h/0 | `PARAMS.arrivalEaseHours`, anchored-night logic | The snap follows E&B's post-arrival framing (sleep local, let light do the circadian work); the specific easing allowance is ours. |
 | CBTmin stepping as fixed hours/day | `plan()` pass 1 | Simplification. The underlying PRC is dose- and phase-dependent; E&B's planning rates approximate it, and we inherit that approximation. |
 | Plans truncated at 16 days | `PARAMS.maxPlanDays` | Practicality. |

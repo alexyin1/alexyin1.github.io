@@ -328,10 +328,12 @@ function blendWindows(
 }
 
 /**
- * Build the chart geometry at a fractional day position. `pos` of 2.5 is
- * halfway between plan days 3 and 4; everything continuous (the rhythm, the
- * sleep bar, the light windows) is interpolated, while labels snap to the
- * nearest whole day so text does not flicker mid-transition.
+ * Build the chart geometry at a fractional position on a 0..days.length
+ * scale, where position 0 is "day 0": the untouched baseline -- habitual
+ * sleep on the home clock, CBTmin where it started, nothing to do yet --
+ * and position k (k >= 1) is plan day k. Everything continuous (the rhythm,
+ * the sleep bar, the light windows) is interpolated between positions, while
+ * labels snap to the nearest whole position so text does not flicker.
  */
 export function buildFrame(
   days: PlanDay[],
@@ -347,14 +349,31 @@ export function buildFrame(
   },
 ): VisualFrame {
   const anchorHour = opts.anchorHour ?? AXIS_ANCHOR_HOUR
-  const clamped = Math.max(0, Math.min(pos, days.length - 1))
+
+  // Day 0: the traveler's life before the plan touches it.
+  const baselineGeometry = (): DayGeom => {
+    const ref = days[0].wake
+    const delta = offsetHoursAt(opts.axisZone, ref) - offsetHoursAt(opts.originZone, ref)
+    const [bh, bm] = opts.habitualBedLocal.split(':').map(Number)
+    return {
+      tminF: axisFraction(days[0].cbtMin, opts.axisZone, anchorHour),
+      sleepStartF: axisFractionOfHour(bh + bm / 60 + delta, anchorHour),
+      sleepHours: sleepDurationHours(opts.habitualBedLocal, opts.habitualWakeLocal),
+      windows: [],
+      points: [],
+      remaining: Math.abs(days[0].remainingShiftHours),
+    }
+  }
+
+  const clamped = Math.max(0, Math.min(pos, days.length))
   const i0 = Math.floor(clamped)
-  const i1 = Math.min(i0 + 1, days.length - 1)
+  const i1 = Math.min(i0 + 1, days.length)
   const t = clamped - i0
-  const g0 = dayGeometry(days[i0], opts.axisZone)
-  const g1 = dayGeometry(days[i1], opts.axisZone)
-  const dayIndex = Math.min(days.length - 1, Math.round(clamped))
-  const reference = days[dayIndex].wake
+  const geomAt = (i: number) => (i === 0 ? baselineGeometry() : dayGeometry(days[i - 1], opts.axisZone))
+  const g0 = geomAt(i0)
+  const g1 = geomAt(i1)
+  const dayIndex = Math.min(days.length, Math.round(clamped))
+  const reference = days[Math.max(0, dayIndex - 1)].wake
 
   const tminF = lerpFrac(g0.tminF, g1.tminF, t)
   const goalHour = targetTminHour(opts.habitualWakeLocal)

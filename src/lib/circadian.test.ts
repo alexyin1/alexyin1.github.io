@@ -312,6 +312,31 @@ describe('plan: pre-travel vs post-arrival rates', () => {
   })
 })
 
+describe('plan: pre-travel days only when needed', () => {
+  it('gives a 3h hop one pre-travel day and a 3-day calendar', () => {
+    // JFK -> SFO: the first 2h of shift resolve at the destination, so only
+    // 1h (one day) of pre-travel shifting is scheduled.
+    const p = plan({
+      originZone: 'America/New_York',
+      destinationZone: 'America/Los_Angeles',
+      departUtc: iso('2026-06-01T16:00:00Z'),
+      arriveUtc: iso('2026-06-01T22:30:00Z'),
+      habitualBedLocal: '23:00',
+      habitualWakeLocal: '07:00',
+      preTravelDays: 3,
+    })
+    expect(p.shiftHours).toBe(-3)
+    expect(p.preTravelShiftHours).toBeCloseTo(1, 6)
+    expect(p.daysToAdjust).toBe(2)
+    expect(p.days).toHaveLength(3)
+    expect(p.completed).toBe(true)
+  })
+
+  it('still uses the full run-up for large shifts', () => {
+    expect(plan(eastward).preTravelShiftHours).toBeCloseTo(3, 6)
+  })
+})
+
 describe('plan: travel direction', () => {
   it('reports the way round the clock the destination lies', () => {
     expect(plan(eastward).travelDirection).toBe('eastward')

@@ -138,6 +138,16 @@ li {
 
 .adapted-note.closing { margin-top: 1.5rem; }
 
+.no-plan {
+  margin-top: 1rem;
+  padding: 0.9rem 1.1rem;
+  background: #f0f7f1;
+  border-left: 4px solid #3f8f6f;
+  color: #38614f;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.95rem;
+}
+
 .adapted-note {
   margin: 0.2rem 0 0.5rem;
   padding: 0.5rem 0.75rem;

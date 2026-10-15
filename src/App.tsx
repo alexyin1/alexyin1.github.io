@@ -7,7 +7,7 @@ import {
   type Place,
   type Trip,
 } from './lib/circadian'
-import { briefing } from './lib/briefing'
+import { NO_PLAN_MESSAGE, briefing, needsPlan } from './lib/briefing'
 import { KIND_EMOJI } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
@@ -146,7 +146,9 @@ export default function App() {
   posRef.current = pos
   const result = plan(trip)
   const dayCount = result.days.length
-  const visDay = Math.min(dayCount - 1, Math.round(pos))
+  // Chart positions run 0..dayCount: position 0 is the baseline day 0, and
+  // position k is plan day k (the itinerary's "Day k").
+  const visDay = Math.min(dayCount, Math.round(pos))
 
   const TRANSITION_MS = 450
   const DWELL_MS = 900
@@ -157,16 +159,16 @@ export default function App() {
     if (!playing) return
     let raf = 0
     let start: number | null = null
-    const fromDay = Math.min(dayCount - 1, Math.round(posRef.current))
+    const fromDay = Math.min(dayCount, Math.round(posRef.current))
     const cycle = DWELL_MS + TRANSITION_MS
     const step = (ts: number) => {
       if (start === null) start = ts
       const t = ts - start
       const k = Math.floor(t / cycle)
       const day = fromDay + k
-      if (day >= dayCount - 1) {
-        setPos(dayCount - 1)
-        setTargetDay(dayCount - 1)
+      if (day >= dayCount) {
+        setPos(dayCount)
+        setTargetDay(dayCount)
         setPlaying(false)
         return
       }
@@ -201,6 +203,7 @@ export default function App() {
   }, [targetDay, playing])
 
   const brief = briefing(result)
+  const planNeeded = needsPlan(result)
 
   return (
     <main>
@@ -231,6 +234,10 @@ export default function App() {
         <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
       </p>
 
+      {!planNeeded && <p className="no-plan">{NO_PLAN_MESSAGE}</p>}
+
+      {planNeeded && (
+      <>
       <section className="briefing">
         <h2 className={`direction ${result.travelDirection}`}>{brief.headline}</h2>
         <p className="summary">
@@ -262,15 +269,24 @@ export default function App() {
 
       <div className="vis-controls">
         <label htmlFor="dayslider" className="vis-day">
-          Day {visDay + 1} of {result.days.length} — {result.days[visDay].date}{' '}
-          <span className="zone">({result.days[visDay].place.label})</span>
+          {visDay === 0 ? (
+            <>
+              Day 0 of {dayCount} — baseline, before any shifting{' '}
+              <span className="zone">({result.origin.label})</span>
+            </>
+          ) : (
+            <>
+              Day {visDay} of {dayCount} — {result.days[visDay - 1].date}{' '}
+              <span className="zone">({result.days[visDay - 1].place.label})</span>
+            </>
+          )}
         </label>
         <div className="vis-row">
         <button
           type="button"
           className="play"
           onClick={() => {
-            if (!playing && pos >= dayCount - 1) {
+            if (!playing && pos >= dayCount) {
               setPos(0)
               setTargetDay(0)
             }
@@ -284,7 +300,7 @@ export default function App() {
           id="dayslider"
           type="range"
           min={0}
-          max={dayCount - 1}
+          max={dayCount}
           step={1}
           list="day-ticks"
           value={targetDay}
@@ -294,8 +310,8 @@ export default function App() {
           }}
         />
         <datalist id="day-ticks">
-          {result.days.map((d) => (
-            <option key={d.index} value={d.index} label={`Day ${d.index + 1}`} />
+          {Array.from({ length: dayCount + 1 }, (_, i) => (
+            <option key={i} value={i} label={`Day ${i}`} />
           ))}
         </datalist>
         </div>
@@ -359,6 +375,8 @@ export default function App() {
           Your circadian clock should now be synchronized to local time. Regular
           sleep habits are enough from here — no extra jet-lag measures needed.
         </p>
+      )}
+      </>
       )}
 
       <footer>

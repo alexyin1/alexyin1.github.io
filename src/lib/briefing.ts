@@ -9,6 +9,20 @@
 
 import { PARAMS, type Plan } from './circadian'
 
+/**
+ * Below about two time zones of shift there is nothing worth planning: the
+ * CDC's threshold for jet lag disorder is crossing at least two zones, and
+ * destination cues absorb that much on their own.
+ */
+export function needsPlan(plan: Plan): boolean {
+  return Math.abs(plan.shiftHours) > PARAMS.destinationFreeShiftHours
+}
+
+export const NO_PLAN_MESSAGE =
+  'Jet lag typically only occurs when traveling more than two time zones ' +
+  'apart. When traveling within two time zones, typically no action is ' +
+  'needed to shift.'
+
 export interface Briefing {
   /** e.g. 'Westward travel'. */
   headline: string

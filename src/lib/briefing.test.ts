@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { briefing } from './briefing'
+import { NO_PLAN_MESSAGE, briefing, needsPlan } from './briefing'
 import { plan, type Trip } from './circadian'
 
 const base: Trip = {
@@ -21,6 +21,19 @@ const eastbound: Trip = {
   originLabel: 'Beijing',
   destinationLabel: 'Los Angeles',
 }
+
+describe('needsPlan', () => {
+  it('draws the line at two time zones', () => {
+    expect(needsPlan(plan(base))).toBe(true) // 9h
+    expect(needsPlan(plan({ ...base, destinationZone: 'America/Denver' }))).toBe(false) // 1h
+    expect(needsPlan(plan({ ...base, destinationZone: 'America/Chicago' }))).toBe(false) // 2h
+    expect(
+      needsPlan(plan({ ...base, destinationZone: 'America/New_York' })), // 3h
+    ).toBe(true)
+    expect(needsPlan(plan({ ...base, destinationZone: 'America/Los_Angeles' }))).toBe(false)
+    expect(NO_PLAN_MESSAGE).toMatch(/more than two time zones/)
+  })
+})
 
 describe('briefing', () => {
   it('leads with the travel direction', () => {
