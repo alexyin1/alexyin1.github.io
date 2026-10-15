@@ -41,10 +41,10 @@ h1 { font-size: 1.6rem; margin: 0; }
 }
 
 .direction {
-  font-size: 0.8rem;
+  font-size: 1.3rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #666;
+  letter-spacing: 0.05em;
+  color: #333;
   margin: 0;
   border: none;
   padding: 0;
@@ -57,10 +57,11 @@ h1 { font-size: 1.6rem; margin: 0; }
 
 .summary {
   margin: 0.3rem 0 0.9rem;
-  font-size: 1.15rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 400;
   line-height: 1.35;
 }
+.summary strong { font-weight: 700; }
 
 .tips { margin: 0; }
 .tips li {

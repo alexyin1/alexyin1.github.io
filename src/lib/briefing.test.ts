@@ -33,19 +33,19 @@ describe('briefing', () => {
     expect(briefing(dubai).headline).toBe('Eastward travel · westward shift')
   })
 
-  it('states the shift in plain terms, with the technical word in support', () => {
+  it('leads the summary with the direction verb', () => {
     expect(briefing(plan(base)).summary).toBe(
-      'Move your body clock 9 hours later (a delay) over about 6 days.',
+      'Delay your body clock by 9 hours over about 6 days.',
     )
     expect(briefing(plan(eastbound)).summary).toBe(
-      'Move your body clock 9 hours earlier (an advance) over about 7 days.',
+      'Advance your body clock by 9 hours over about 7 days.',
     )
   })
 
   it('gets singular units right', () => {
     const oneHour = plan({ ...base, destinationZone: 'America/Denver' })
     expect(briefing(oneHour).summary).toBe(
-      'Move your body clock 1 hour earlier (an advance) over about 1 day.',
+      'Advance your body clock by 1 hour over about 1 day.',
     )
   })
 
@@ -97,9 +97,24 @@ describe('briefing', () => {
     }
   })
 
+  it('estimates days of jet lag discomfort from days still >2h misaligned', () => {
+    // Beijing delay: the transit day lands 6h out, the next day 4h; by day
+    // three the gap is 2h and no longer counts.
+    expect(briefing(plan(base)).tips.some((t) => /Prepare for about 2 days of jet lag discomfort/.test(t))).toBe(true)
+    // Beijing -> LA advance adapts more slowly: 6, 4.5 and 3h days.
+    expect(briefing(plan(eastbound)).tips.some((t) => /Prepare for about 3 days of jet lag discomfort/.test(t))).toBe(true)
+  })
+
+  it('promises little discomfort when the shift is under two time zones', () => {
+    const oneHour = plan({ ...base, destinationZone: 'America/Denver' })
+    const tips = briefing(oneHour).tips
+    expect(tips.some((t) => /expect little jet lag discomfort/.test(t))).toBe(true)
+    expect(tips.some((t) => /Prepare for/.test(t))).toBe(false)
+  })
+
   it('carries the standing meal rules that left the itinerary', () => {
     const tips = briefing(plan(base)).tips
-    expect(tips.some((t) => /dinner at least 3 hours before/.test(t))).toBe(true)
+    expect(tips.some((t) => /last meal at least 3 hours before/.test(t))).toBe(true)
     expect(tips.some((t) => /meal timing helps/.test(t))).toBe(true)
   })
 

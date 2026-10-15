@@ -103,6 +103,16 @@ describe('DayVisual', () => {
     expect(html).not.toContain('body clock')
   })
 
+  it('omits the melatonin legend entry on delay plans, keeps it on advances', () => {
+    // trips[0] is a westward delay: no melatonin anywhere in the plan.
+    const delay = render(trips[0], 0)
+    expect(delay).not.toContain('Melatonin')
+    expect(delay).not.toContain('💊')
+    // trips[1] is the eastward advance, where melatonin is scheduled.
+    const advance = render(trips[1], 0)
+    expect(advance).toContain('Melatonin')
+  })
+
   it('says CBTmin has arrived on the final day', () => {
     const p = plan(trips[0])
     expect(render(trips[0], p.days.length - 1)).toContain('has arrived on destination time')

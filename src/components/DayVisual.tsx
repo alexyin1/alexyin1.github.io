@@ -170,15 +170,15 @@ export default function DayVisual(props: Props) {
       </svg>
 
       <ul className="legend">
-        {(['sleep', 'seek-light', 'avoid-light', 'melatonin', 'exercise', 'meal'] as const).map(
-          (k) => (
+        {(['sleep', 'seek-light', 'avoid-light', 'melatonin', 'exercise', 'meal'] as const)
+          .filter((k) => plan.timeline.some((a) => a.kind === k))
+          .map((k) => (
             <li key={k}>
               <span className="lg-emoji" aria-hidden="true">{KIND_EMOJI[k]}</span>
               {k === 'seek-light' ? 'Seek light' : k === 'avoid-light' ? 'Avoid light'
                 : k[0].toUpperCase() + k.slice(1)}
             </li>
-          ),
-        )}
+          ))}
         <li><span className="lg-swatch curve-goal" /> Target rhythm</li>
         <li><span className="lg-swatch sleep-target" /> Target sleep time</li>
         <li><span className="lg-swatch dayband" /> Daylight (approx.)</li>

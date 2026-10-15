@@ -143,7 +143,19 @@ export default function App() {
 
       <section className="briefing">
         <h2 className={`direction ${result.travelDirection}`}>{brief.headline}</h2>
-        <p className="summary">{brief.summary}</p>
+        <p className="summary">
+          {(() => {
+            const m = /^(Delay|Advance)([\s\S]*)$/.exec(brief.summary)
+            return m ? (
+              <>
+                <strong>{m[1]}</strong>
+                {m[2]}
+              </>
+            ) : (
+              brief.summary
+            )
+          })()}
+        </p>
         <ul className="tips">
           {brief.tips.map((t) => (
             <li key={t}>{t}</li>
@@ -260,6 +272,15 @@ export default function App() {
           Recommendations follow the published protocol of Eastman &amp; Burgess, with
           exercise and meal timing from the sources below. Educational tool — not
           medical advice.
+        </p>
+        <p>
+          Caffeine is omitted intentionally due to evidence indicating it has limited
+          effect on circadian entrainment.
+        </p>
+        <p>
+          This tool is intended to optimize circadian entrainment and help travelers
+          with jet lag. It is not a substitute for general sleep hygiene, which should
+          still be practiced while traveling.
         </p>
         <ul className="sources">
           {SOURCES.map((s) => (

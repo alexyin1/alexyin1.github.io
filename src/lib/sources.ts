@@ -30,6 +30,13 @@ export const SOURCES: Source[] = [
       'Exercise timing: morning exercise phase-advances; evening (~7–10 pm) exercise phase-delays.',
   },
   {
+    id: 'cdc-yellow-book',
+    citation: 'CDC Yellow Book: Jet Lag Disorder.',
+    url: 'https://www.cdc.gov/yellow-book/hcp/travel-air-sea/jet-lag-disorder.html',
+    basis:
+      'Jet lag typically follows crossing at least two time zones — the threshold behind the "days of discomfort" estimate in the briefing.',
+  },
+  {
     id: 'wehrens-2017',
     citation:
       'Wehrens SMT et al. (2017). Meal Timing Regulates the Human Circadian System. Curr Biol 27(12):1768–1775.',

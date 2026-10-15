@@ -34,6 +34,7 @@ low-dose melatonin for advances.
 | Evening exercise on delays (bed−4h to bed−1h) | `plan()`, delay branch | Youngstedt et al. 2019 | Exercise PRC: ~7–10 pm exercise delays. |
 | Eat on the destination schedule; first meal scheduled | `plan()` meal slot; briefing tip | Wehrens et al. 2017 | Meal timing shifts peripheral (metabolic) clocks without moving the central clock. [Curr Biol 27:1768](https://www.cell.com/current-biology/fulltext/S0960-9822(17)30504-3) |
 | Direction choice: advance vs delay by fewest days | `computeShift()` | E&B (rates) | Mechanical consequence of the asymmetric rates; E&B likewise route large eastward shifts as delays. |
+| "Days of jet lag discomfort" = days at the destination still >2h misaligned | `briefing()` | [CDC Yellow Book: Jet Lag Disorder](https://www.cdc.gov/yellow-book/hcp/travel-air-sea/jet-lag-disorder.html) | CDC: jet lag typically follows crossing at least two time zones; we apply the same 2h threshold to the shrinking misalignment. |
 
 ## Our design choices (not from the literature)
 

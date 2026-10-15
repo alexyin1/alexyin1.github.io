@@ -50,12 +50,11 @@ export function briefing(plan: Plan): Briefing {
     ? `${travelWord} travel · ${advancing ? 'eastward' : 'westward'} shift`
     : `${travelWord} travel`
 
-  // 'Advance' and 'delay' are the terms the literature uses, and they are
-  // worth teaching -- but lead with earlier/later, which needs no gloss.
+  // 'Advance' and 'delay' are the terms the literature uses; leading with
+  // the verb lets the UI bold exactly that word.
   const summary =
-    `Move your body clock ${plural(magnitude, 'hour')} ` +
-    `${advancing ? 'earlier' : 'later'} (${advancing ? 'an advance' : 'a delay'}) ` +
-    `over about ${plural(plan.daysToAdjust, 'day')}.`
+    `${advancing ? 'Advance' : 'Delay'} your body clock by ` +
+    `${plural(magnitude, 'hour')} over about ${plural(plan.daysToAdjust, 'day')}.`
 
   const tips: string[] = []
 
@@ -77,8 +76,7 @@ export function briefing(plan: Plan): Briefing {
     const post = magnitude - plan.preTravelShiftHours
     tips.push(
       `Shift about an hour a day before you fly — this plan moves you ` +
-        `${plural(plan.preTravelShiftHours, 'hour')} while you are still at home, ` +
-        `which is about as much as most people can manage around work and family. ` +
+        `${plural(plan.preTravelShiftHours, 'hour')} while you are still at home. ` +
         (post > 0
           ? `The remaining ${plural(post, 'hour')} ${post === 1 ? 'happens' : 'happen'} ` +
             `after you land, where the local daylight and meal times are working with you.`
@@ -91,13 +89,26 @@ export function briefing(plan: Plan): Briefing {
     )
   }
 
-  // What the first nights actually feel like, so odd hours read as intended
-  // rather than as the plan failing.
+  // What the first days actually feel like, so odd hours read as intended
+  // rather than as the plan failing. Jet lag disorder typically follows a
+  // crossing of two or more time zones (CDC Yellow Book), so the expected
+  // rough patch is the days spent at the destination still more than two
+  // hours out of alignment.
+  const roughDays = plan.days.filter(
+    (d) =>
+      (d.transit || d.zone === plan.destination.zone) &&
+      Math.abs(d.remainingShiftHours) > 2,
+  ).length
   tips.push(
-    `The first couple of nights at the destination are deliberately up to ` +
-      `${PARAMS.arrivalEaseHours} hours off the local norm, easing onto local time. ` +
-      `If you are wide awake in the small hours or fading early, that is your ` +
-      `clock still traveling — hold the light timing and it passes.`,
+    roughDays > 0
+      ? `Prepare for about ${plural(roughDays, 'day')} of jet lag discomfort — it sets ` +
+        `in when your clock is two or more time zones out of step. If you are wide ` +
+        `awake in the small hours or fading early, that is your clock still ` +
+        `traveling — hold the light timing and it passes. The first couple of ` +
+        `nights at the destination are deliberately up to ${PARAMS.arrivalEaseHours} ` +
+        `hours off the local norm, easing onto local time.`
+      : `Your clock arrives nearly aligned, so expect little jet lag discomfort — ` +
+        `it typically takes a shift of two or more time zones to notice.`,
   )
 
   // The strategy surprise, when it applies.
@@ -116,7 +127,7 @@ export function briefing(plan: Plan): Briefing {
   tips.push(
     'Eat your meals on the schedule, especially the first one of the day — ' +
       'meal timing helps the rest of your body fall in line with the new clock. ' +
-      'Finish dinner at least 3 hours before your target bedtime.',
+      'Try to have your last meal at least 3 hours before your target bedtime.',
   )
 
   if (advancing && plan.timeline.some((a) => a.kind === 'melatonin')) {
