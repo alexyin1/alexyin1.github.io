@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   plan,
   formatTime,
@@ -52,36 +52,69 @@ function PlaceTag({ place }: { place: Place }) {
 
 export default function App() {
   const [clock, setClock] = useClockFormat()
+  // Whole days are the only meaningful states; fractional positions exist
+  // only to smooth the eye between them. So the chart always rests on an
+  // integer `targetDay`, and `pos` is the animated position easing there.
+  const [targetDay, setTargetDay] = useState(0)
   const [pos, setPos] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const posRef = useRef(0)
+  posRef.current = pos
   const result = plan(demoTrip)
   const dayCount = result.days.length
   const visDay = Math.min(dayCount - 1, Math.round(pos))
 
-  // Playback is continuous: a requestAnimationFrame loop advances a
-  // fractional day position, and the chart interpolates its geometry. It
-  // settles on the final day rather than looping.
+  const TRANSITION_MS = 450
+  const DWELL_MS = 900
+  const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+
+  // Playback: dwell on each day, then a quick eased hop to the next.
   useEffect(() => {
     if (!playing) return
-    const MS_PER_DAY = 1500
     let raf = 0
-    let last: number | null = null
+    let start: number | null = null
+    const fromDay = Math.min(dayCount - 1, Math.round(posRef.current))
+    const cycle = DWELL_MS + TRANSITION_MS
     const step = (ts: number) => {
-      const dt = last === null ? 0 : ts - last
-      last = ts
-      setPos((p) => {
-        const next = p + dt / MS_PER_DAY
-        if (next >= dayCount - 1) {
-          setPlaying(false)
-          return dayCount - 1
-        }
-        return next
-      })
+      if (start === null) start = ts
+      const t = ts - start
+      const k = Math.floor(t / cycle)
+      const day = fromDay + k
+      if (day >= dayCount - 1) {
+        setPos(dayCount - 1)
+        setTargetDay(dayCount - 1)
+        setPlaying(false)
+        return
+      }
+      const inCycle = t - k * cycle
+      const frac = inCycle <= DWELL_MS ? 0 : easeInOut((inCycle - DWELL_MS) / TRANSITION_MS)
+      setPos(day + frac)
+      setTargetDay(day + (frac > 0.5 ? 1 : 0))
       raf = requestAnimationFrame(step)
     }
     raf = requestAnimationFrame(step)
     return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, dayCount])
+
+  // Manual navigation: one quick eased glide to the selected day, however
+  // far away it is. The chart never parks between days.
+  useEffect(() => {
+    if (playing) return
+    const from = posRef.current
+    if (Math.abs(from - targetDay) < 1e-6) return
+    let raf = 0
+    let start: number | null = null
+    const step = (ts: number) => {
+      if (start === null) start = ts
+      const f = Math.min(1, (ts - start) / TRANSITION_MS)
+      setPos(from + (targetDay - from) * easeInOut(f))
+      if (f < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetDay, playing])
 
   const brief = briefing(result)
 
@@ -130,7 +163,10 @@ export default function App() {
           type="button"
           className="play"
           onClick={() => {
-            if (!playing && pos >= dayCount - 1) setPos(0)
+            if (!playing && pos >= dayCount - 1) {
+              setPos(0)
+              setTargetDay(0)
+            }
             setPlaying((p) => !p)
           }}
           aria-label={playing ? 'Pause animation' : 'Play animation'}
@@ -146,13 +182,19 @@ export default function App() {
           type="range"
           min={0}
           max={dayCount - 1}
-          step={0.02}
-          value={pos}
+          step={1}
+          list="day-ticks"
+          value={targetDay}
           onChange={(e) => {
             setPlaying(false)
-            setPos(Number(e.target.value))
+            setTargetDay(Number(e.target.value))
           }}
         />
+        <datalist id="day-ticks">
+          {result.days.map((d) => (
+            <option key={d.index} value={d.index} label={`Day ${d.index + 1}`} />
+          ))}
+        </datalist>
       </div>
       <DayVisual
         plan={result}

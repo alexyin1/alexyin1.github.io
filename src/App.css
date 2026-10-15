@@ -186,6 +186,7 @@ footer {
 
 .vis-controls label { font-size: 0.9rem; color: #444; }
 .vis-controls input[type='range'] { flex: 1; min-width: 9rem; accent-color: #4a5aa8; }
+.vis-controls datalist { display: none; }
 
 .play {
   font: inherit;

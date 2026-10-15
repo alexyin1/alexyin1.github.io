@@ -5,7 +5,6 @@ import {
   type VisualFrame,
   axisTicks,
   buildFrame,
-  formatDecimalHour,
   formatHourLabel,
 } from '../lib/visual'
 
@@ -98,7 +97,7 @@ export default function DayVisual(props: Props) {
         <circle cx={px(frame.goalF)} cy={yOf(-1)} r={6} className="tmin goal" />
         <circle cx={px(frame.tminF)} cy={yOf(-1)} r={5.5} className="tmin today" />
         <text className="annot" x={px(frame.tminF)} y={yOf(-1) + 19} textAnchor="middle">
-          CBTmin {formatDecimalHour(frame.tminHour, clock)}
+          CBTmin
         </text>
 
         {/* light windows, with point events marked above */}
