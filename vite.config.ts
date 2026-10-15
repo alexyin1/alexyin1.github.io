@@ -7,4 +7,8 @@ export default defineConfig({
   // '/' is correct for a <user>.github.io site served from the domain root.
   // A project repo deployed to <user>.github.io/<repo>/ would need '/<repo>/'.
   base: '/',
+  build: {
+    // The airport dataset is a deliberate ~650kB lazy chunk; don't warn.
+    chunkSizeWarningLimit: 700,
+  },
 })

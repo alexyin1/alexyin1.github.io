@@ -13,6 +13,7 @@
 
 import { DateTime } from 'luxon'
 import { PARAMS, offsetHoursAt, type AdviceKind, type PlanDay } from './circadian'
+import { sunTimesAt } from './sun'
 
 /** Destination local hour at the left edge of the axis. */
 export const AXIS_ANCHOR_HOUR = 12
@@ -107,10 +108,9 @@ export function localWindowSegments(
 }
 
 /**
- * Approximate daylight for a zone on the axis. Daylight is taken as
- * 06:00-18:00 local, i.e. equinox at the zone's reference meridian -- good
- * enough to show "your evening is their morning". Real sunrise/sunset needs
- * coordinates, which arrive with airport data.
+ * Approximate daylight for a zone on the axis: 06:00-18:00 local, i.e.
+ * equinox at the zone's reference meridian. The fallback when no coordinates
+ * are known.
  */
 export function daylightSegments(
   zone: string,
@@ -119,6 +119,31 @@ export function daylightSegments(
   anchorHour = AXIS_ANCHOR_HOUR,
 ): Seg[] {
   return localWindowSegments(zone, '06:00', 12, axisZone, reference, anchorHour)
+}
+
+export interface Coords {
+  lat: number
+  lon: number
+}
+
+/**
+ * Daylight on the axis for a real place: actual sunrise-to-sunset computed
+ * from coordinates for the civil date the reference instant falls on there.
+ * Falls back to the 06:00-18:00 approximation without coordinates. Polar
+ * edge cases render honestly: all day or none of it.
+ */
+export function daylightSegmentsAt(
+  coords: Coords | null | undefined,
+  zone: string,
+  axisZone: string,
+  reference: Date,
+  anchorHour = AXIS_ANCHOR_HOUR,
+): Seg[] {
+  if (!coords) return daylightSegments(zone, axisZone, reference, anchorHour)
+  const sun = sunTimesAt(reference, zone, coords.lat, coords.lon)
+  if (sun.polar === 'night') return []
+  if (sun.polar === 'day') return [{ f0: 0, f1: 1 }]
+  return intervalSegments(sun.sunrise!, sun.sunset!, axisZone, anchorHour)
 }
 
 /** Hours between a habitual bed and wake time, handling the midnight wrap. */
@@ -264,7 +289,9 @@ function dayGeometry(day: PlanDay, axisZone: string): DayGeom {
     sleepHours: (sleep.end.getTime() - sleep.start.getTime()) / 3.6e6,
     windows,
     points,
-    remaining: Math.abs(day.remainingShiftHours),
+    // The chart shows tonight's CBTmin, so the caption counts what is
+    // left after tonight -- zero on the night the shift completes.
+    remaining: Math.abs(day.remainingAfterTonightHours),
   }
 }
 
@@ -314,6 +341,8 @@ export function buildFrame(
     originZone: string
     habitualBedLocal: string
     habitualWakeLocal: string
+    originCoords?: Coords | null
+    destinationCoords?: Coords | null
     anchorHour?: number
   },
 ): VisualFrame {
@@ -352,8 +381,8 @@ export function buildFrame(
     ),
     windows: blendWindows(g0.windows, g1.windows, t),
     points: blendWindows(g0.points, g1.points, t),
-    originDay: daylightSegments(opts.originZone, opts.axisZone, reference, anchorHour),
-    destDay: daylightSegments(opts.axisZone, opts.axisZone, reference, anchorHour),
+    originDay: daylightSegmentsAt(opts.originCoords, opts.originZone, opts.axisZone, reference, anchorHour),
+    destDay: daylightSegmentsAt(opts.destinationCoords, opts.axisZone, opts.axisZone, reference, anchorHour),
     originDeltaHours:
       localHourDecimal(reference, opts.originZone) - localHourDecimal(reference, opts.axisZone),
     remainingHours: lerp(g0.remaining, g1.remaining, t),

@@ -11,20 +11,84 @@ import { briefing } from './lib/briefing'
 import { KIND_EMOJI } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
+import {
+  type Airport,
+  airportLabel,
+  loadAirports,
+  resolveAirport,
+  searchAirports,
+} from './lib/airports'
 import './App.css'
 
-// Placeholder trip. Step 3 replaces this with a real input form.
-// Beijing has no separate IANA zone -- all of China uses Asia/Shanghai.
-const demoTrip: Trip = {
-  originZone: 'America/Los_Angeles',
-  destinationZone: 'Asia/Shanghai',
-  originLabel: 'Los Angeles',
-  destinationLabel: 'Beijing',
-  departUtc: new Date('2026-06-01T20:00:00Z'), // 13:00 PDT
-  arriveUtc: new Date('2026-06-02T08:30:00Z'), // 16:30 CST, next day
+// Flight times are still fixed demo values; the full trip form (dates and
+// habitual sleep) is the next step. Origin and destination are live.
+const DEMO_TIMES = {
+  departUtc: new Date('2026-06-01T20:00:00Z'),
+  arriveUtc: new Date('2026-06-02T08:30:00Z'),
   habitualBedLocal: '23:00',
   habitualWakeLocal: '07:00',
   preTravelDays: 3,
+}
+
+// Defaults so the page renders before the airport dataset chunk loads.
+// Beijing has no separate IANA zone -- all of China uses Asia/Shanghai.
+const DEFAULT_ORIGIN: Airport = {
+  iata: 'LAX', name: 'Los Angeles International Airport', city: 'Los Angeles',
+  country: 'US', lat: 33.942, lon: -118.408, tz: 'America/Los_Angeles',
+}
+const DEFAULT_DESTINATION: Airport = {
+  iata: 'PEK', name: 'Beijing Capital International Airport', city: 'Beijing',
+  country: 'CN', lat: 40.08, lon: 116.585, tz: 'Asia/Shanghai',
+}
+
+/** Airport picker: a text input with ranked suggestions via datalist. */
+function AirportInput(props: {
+  id: string
+  label: string
+  airports: Airport[] | null
+  selected: Airport
+  onSelect: (a: Airport) => void
+}) {
+  const { id, airports, selected } = props
+  const [text, setText] = useState('')
+  const suggestions = airports && text ? searchAirports(airports, text) : []
+  return (
+    <div className="airport-input">
+      <label htmlFor={id}>{props.label}</label>
+      <input
+        id={id}
+        type="text"
+        list={`${id}-list`}
+        placeholder={`${selected.iata} · ${selected.city}`}
+        value={text}
+        disabled={!airports}
+        onChange={(e) => {
+          const value = e.target.value
+          setText(value)
+          if (!airports) return
+          const hit = resolveAirport(airports, value)
+          // Only commit on an unambiguous pick: an exact code or a chosen
+          // suggestion. Free text commits on blur instead.
+          if (hit && (value.trim().length === 3 || value.includes('·'))) {
+            props.onSelect(hit)
+          }
+        }}
+        onBlur={() => {
+          if (!airports || !text.trim()) return
+          const hit = resolveAirport(airports, text)
+          if (hit) {
+            props.onSelect(hit)
+            setText('')
+          }
+        }}
+      />
+      <datalist id={`${id}-list`}>
+        {suggestions.map((a) => (
+          <option key={a.iata} value={airportLabel(a)} />
+        ))}
+      </datalist>
+    </div>
+  )
 }
 
 const CLOCK_KEY = 'jetlag.clock'
@@ -52,6 +116,26 @@ function PlaceTag({ place }: { place: Place }) {
 
 export default function App() {
   const [clock, setClock] = useClockFormat()
+  const [airports, setAirports] = useState<Airport[] | null>(null)
+  const [origin, setOrigin] = useState<Airport>(DEFAULT_ORIGIN)
+  const [destination, setDestination] = useState<Airport>(DEFAULT_DESTINATION)
+  useEffect(() => {
+    let alive = true
+    loadAirports().then((list) => {
+      if (alive) setAirports(list)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const trip: Trip = {
+    ...DEMO_TIMES,
+    originZone: origin.tz,
+    destinationZone: destination.tz,
+    originLabel: origin.city || origin.name,
+    destinationLabel: destination.city || destination.name,
+  }
   // Whole days are the only meaningful states; fractional positions exist
   // only to smooth the eye between them. So the chart always rests on an
   // integer `targetDay`, and `pos` is the animated position easing there.
@@ -60,7 +144,7 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const posRef = useRef(0)
   posRef.current = pos
-  const result = plan(demoTrip)
+  const result = plan(trip)
   const dayCount = result.days.length
   const visDay = Math.min(dayCount - 1, Math.round(pos))
 
@@ -137,6 +221,12 @@ export default function App() {
         </div>
       </header>
 
+      <div className="route-form">
+        <AirportInput id="origin" label="From" airports={airports}
+          selected={origin} onSelect={setOrigin} />
+        <AirportInput id="destination" label="To" airports={airports}
+          selected={destination} onSelect={setDestination} />
+      </div>
       <p className="route">
         <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
       </p>
@@ -214,10 +304,12 @@ export default function App() {
         plan={result}
         pos={pos}
         clock={clock}
-        originZone={demoTrip.originZone}
-        destinationZone={demoTrip.destinationZone}
-        habitualBedLocal={demoTrip.habitualBedLocal}
-        habitualWakeLocal={demoTrip.habitualWakeLocal}
+        originZone={trip.originZone}
+        destinationZone={trip.destinationZone}
+        habitualBedLocal={trip.habitualBedLocal}
+        habitualWakeLocal={trip.habitualWakeLocal}
+        originCoords={origin}
+        destinationCoords={destination}
       />
 
       <h2 className="itinerary-head">Day by day</h2>
@@ -235,13 +327,6 @@ export default function App() {
             <p className="transit-note">
               Travel day — times shown in both {day.place.label} and{' '}
               {day.otherPlace!.label} clocks.
-            </p>
-          )}
-          {day.adapted && (
-            <p className="adapted-note">
-              Your circadian clock should now be synchronized to local time.
-              Regular sleep habits are enough from here — no extra jet-lag
-              measures needed.
             </p>
           )}
           <ul>
@@ -269,6 +354,13 @@ export default function App() {
         </section>
       ))}
 
+      {result.completed && (
+        <p className="adapted-note closing">
+          Your circadian clock should now be synchronized to local time. Regular
+          sleep habits are enough from here — no extra jet-lag measures needed.
+        </p>
+      )}
+
       <footer>
         <p>
           Recommendations follow the published protocol of Eastman &amp; Burgess, with
@@ -283,6 +375,13 @@ export default function App() {
           This tool is intended to optimize circadian entrainment and help travelers
           with jet lag. It is not a substitute for general sleep hygiene, which should
           still be practiced while traveling.
+        </p>
+        <p>
+          Airport data from{' '}
+          <a href="https://github.com/mwgg/Airports" target="_blank" rel="noreferrer">
+            mwgg/Airports
+          </a>{' '}
+          (MIT). Sunrise and sunset are computed from airport coordinates.
         </p>
         <ul className="sources">
           {SOURCES.map((s) => (

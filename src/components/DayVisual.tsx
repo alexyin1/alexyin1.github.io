@@ -52,6 +52,8 @@ interface Props {
   destinationZone: string
   habitualBedLocal: string
   habitualWakeLocal: string
+  originCoords?: { lat: number; lon: number } | null
+  destinationCoords?: { lat: number; lon: number } | null
 }
 
 export default function DayVisual(props: Props) {
@@ -61,6 +63,8 @@ export default function DayVisual(props: Props) {
     originZone: props.originZone,
     habitualBedLocal: props.habitualBedLocal,
     habitualWakeLocal: props.habitualWakeLocal,
+    originCoords: props.originCoords,
+    destinationCoords: props.destinationCoords,
   })
 
   const px = (f: number) => GUT + f * PW
@@ -181,7 +185,12 @@ export default function DayVisual(props: Props) {
           ))}
         <li><span className="lg-swatch curve-goal" /> Target rhythm</li>
         <li><span className="lg-swatch sleep-target" /> Target sleep time</li>
-        <li><span className="lg-swatch dayband" /> Daylight (approx.)</li>
+        <li>
+          <span className="lg-swatch dayband" />{' '}
+          {props.originCoords && props.destinationCoords
+            ? 'Daylight (sunrise–sunset)'
+            : 'Daylight (approx.)'}
+        </li>
       </ul>
 
       <figcaption>

@@ -167,6 +167,8 @@ export interface PlanDay {
   nextCbtMin: Date
   /** Hours still to shift at the start of this day (signed). */
   remainingShiftHours: number
+  /** Hours still to shift after tonight's sleep (signed). */
+  remainingAfterTonightHours: number
   /**
    * True once the traveler is at the destination with no shift remaining:
    * the clock is synchronized and ordinary sleep habits are all that's left.
@@ -198,6 +200,8 @@ export interface Plan {
   destination: Place
   /** Days of shifting the plan actually schedules. */
   daysToAdjust: number
+  /** True when the full shift completes within the plan. */
+  completed: boolean
   /** How much of the shift happens before arrival (unsigned hours). */
   preTravelShiftHours: number
   days: PlanDay[]
@@ -464,13 +468,13 @@ export function plan(trip: Trip): Plan {
 
   const daysNeeded = frames.filter((f) => f.step !== 0).length
   const preTravelShiftHours = preTravelShiftUsed
-  // Run until the shift is done, showing one settled day at the end, but
-  // always cover at least one full day past arrival so the traveler gets
-  // on-the-ground guidance.
+  // Run until the night the shift completes -- no trailing settled day, the
+  // itinerary ends when the work does -- but always cover at least one full
+  // day past arrival so the traveler gets on-the-ground guidance.
   const daysAfterArrival = Math.ceil(arrive.diff(day0, 'days').days) + 1
   const totalDays = Math.min(
     PARAMS.maxPlanDays,
-    Math.max(completedOnDay < 0 ? PARAMS.maxPlanDays : completedOnDay + 2, daysAfterArrival, 1),
+    Math.max(completedOnDay < 0 ? PARAMS.maxPlanDays : completedOnDay + 1, daysAfterArrival, 1),
   )
 
   if (completedOnDay < 0 && direction !== 'none') {
@@ -623,6 +627,7 @@ export function plan(trip: Trip): Plan {
       cbtMin: frames[i].cbt.toJSDate(),
       nextCbtMin: frames[i].nextCbt.toJSDate(),
       remainingShiftHours: remainingAtStart,
+      remainingAfterTonightHours: remainingAtStart - frames[i].step,
       adapted: landed && !stillShifting,
       transit,
       otherPlace,
@@ -645,6 +650,7 @@ export function plan(trip: Trip): Plan {
     origin,
     destination,
     daysToAdjust: daysNeeded,
+    completed: completedOnDay >= 0,
     preTravelShiftHours,
     days,
     timeline,

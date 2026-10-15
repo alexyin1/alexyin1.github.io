@@ -35,7 +35,13 @@ site served from the domain root.
   touching the science, and so it can't drift from the schedule it describes.
 - `src/lib/*.test.ts` — tests, including the phase-response sign conventions
   and DST handling.
-- `src/App.tsx` — currently renders a hardcoded demo trip.
+- `src/lib/airports.ts` + `src/data/airports.json` — IATA/city lookup
+  (~7,900 airports with coordinates and IANA zone, from mwgg/Airports, MIT),
+  lazy-loaded as its own chunk.
+- `src/lib/sun.ts` — sunrise/sunset from coordinates (NOAA-style sunrise
+  equation), used for the chart's day/night strips.
+- `src/App.tsx` — origin/destination airport pickers are live; flight times
+  and habitual sleep are still demo values pending the full trip form.
 
 ## How the model works
 

@@ -156,10 +156,13 @@ describe('plan: shifting', () => {
       expect(s).toBeGreaterThanOrEqual(24 - PARAMS.advanceHoursPerDay - 1e-9)
     }
 
-    // Total movement equals the full shift once adaptation completes.
+    // Visible movement plus the final night's step equals the full shift,
+    // and the plan ends on the night the shift completes.
     const totalShifted = steps.reduce((acc, s) => acc + (24 - s), 0)
-    expect(totalShifted).toBeCloseTo(8, 6)
-    expect(p.days.at(-1)!.remainingShiftHours).toBeCloseTo(0, 6)
+    const last = p.days.at(-1)!
+    expect(totalShifted + Math.abs(last.remainingShiftHours)).toBeCloseTo(8, 6)
+    expect(last.remainingAfterTonightHours).toBeCloseTo(0, 6)
+    expect(p.completed).toBe(true)
   })
 
   it('moves CBTmin later for westward travel, at the faster delay rate', () => {
@@ -170,7 +173,7 @@ describe('plan: shifting', () => {
 
     for (const s of steps) expect(s).toBeGreaterThanOrEqual(24 - 1e-9)
     const totalShifted = steps.reduce((acc, s) => acc + (s - 24), 0)
-    expect(totalShifted).toBeCloseTo(8, 6)
+    expect(totalShifted + Math.abs(p.days.at(-1)!.remainingShiftHours)).toBeCloseTo(8, 6)
     // 3h of the 8h happens before arrival at 1h/day, the remaining 5h after
     // at 2h/day (E&B delay rate): 3 + 3 = 6 days of active shifting.
     expect(p.daysToAdjust).toBe(6)
@@ -298,10 +301,14 @@ describe('plan: pre-travel vs post-arrival rates', () => {
 
   it('still completes the full shift, just over more days', () => {
     const p = plan({ ...westward, preTravelDays: 3 })
-    expect(p.days.at(-1)!.remainingShiftHours).toBeCloseTo(0, 6)
+    expect(p.days.at(-1)!.remainingAfterTonightHours).toBeCloseTo(0, 6)
+    // The final wake of the plan (the end of the last night's sleep) lands
+    // on the habitual local schedule; the last day's own wake may still be
+    // one easing step early.
     const last = p.days.at(-1)!
-    const localWake = DateTime.fromJSDate(last.wake, { zone: last.zone })
-    expect(localWake.hour + localWake.minute / 60).toBeCloseTo(7, 1)
+    const sleep = firstOfKind(last.advice, 'sleep')
+    const finalWake = DateTime.fromJSDate(sleep.end, { zone: last.zone })
+    expect(finalWake.hour + finalWake.minute / 60).toBeCloseTo(7, 1)
   })
 })
 
@@ -618,13 +625,14 @@ describe('plan: post-arrival local anchoring', () => {
       .map((d) => DateTime.fromJSDate(d.bed, { zone: trip.destinationZone }).hour)
 
   it('eases a delaying traveler in early: bed 2h before local norm, then 1h, then settled', () => {
-    // Habitual bed 23:00; a delayer is exhausted early, so 21:00, 22:00, 23:00.
-    expect(destBedHours(toBeijing).slice(0, 4)).toEqual([21, 22, 23, 23])
+    // Habitual bed 23:00; a delayer is exhausted early, so 21:00, 22:00, and
+    // the plan ends on the settled 23:00 night.
+    expect(destBedHours(toBeijing)).toEqual([21, 22, 23])
   })
 
   it('eases an advancing traveler in late: bed 2h after local norm, then 1h, then settled', () => {
-    // An advancer cannot fall asleep yet, so 01:00, 00:00, 23:00.
-    expect(destBedHours(fromBeijing).slice(0, 4)).toEqual([1, 0, 23, 23])
+    // An advancer cannot fall asleep yet, so 01:00, 00:00, then 23:00 nights.
+    expect(destBedHours(fromBeijing).slice(0, 3)).toEqual([1, 0, 23])
   })
 
   it('anchors every destination night to the local clock, never the body clock', () => {
@@ -683,34 +691,32 @@ describe('plan: post-arrival local anchoring', () => {
     }
   })
 
-  it('flags adapted days: at the destination with nothing left to shift', () => {
+  it('ends the plan on the night the shift completes -- no trailing settled day', () => {
     for (const trip of [toBeijing, fromBeijing]) {
       const p = plan(trip)
       const last = p.days.at(-1)!
-      expect(last.adapted).toBe(true)
-      for (const d of p.days) {
-        expect(d.adapted).toBe(
-          d.wake.getTime() >= trip.arriveUtc.getTime() &&
-            Math.abs(d.remainingShiftHours) < 1e-9,
-        )
-      }
-      // Never flagged while still shifting or still at home.
-      expect(p.days[0].adapted).toBe(false)
+      expect(p.completed).toBe(true)
+      // The last day still has work (its night finishes the shift)...
+      expect(Math.abs(last.remainingShiftHours)).toBeGreaterThan(0)
+      expect(last.remainingAfterTonightHours).toBeCloseTo(0, 6)
+      // ...so no day in these plans is a settled filler day.
+      expect(p.days.some((d) => d.adapted)).toBe(false)
     }
   })
 
-  it('drops shift advice once adaptation is complete', () => {
-    for (const trip of [toBeijing, fromBeijing]) {
-      const p = plan(trip)
-      const settled = p.days.filter((d) => Math.abs(d.remainingShiftHours) < 1e-9)
-      expect(settled.length).toBeGreaterThan(0)
-      for (const d of settled) {
-        const kinds = d.advice.map((a) => a.kind)
-        expect(kinds).not.toContain('seek-light')
-        expect(kinds).not.toContain('avoid-light')
-        expect(kinds).not.toContain('melatonin')
-        expect(kinds).toContain('sleep')
-      }
+  it('keeps adapted days when arrival trails completion, without shift advice', () => {
+    // A 1h hop to Denver completes before departure, so the days through
+    // arrival are genuinely adapted and carry only the scaffolding.
+    const p = plan({ ...toBeijing, destinationZone: 'America/Denver' })
+    expect(p.completed).toBe(true)
+    const adapted = p.days.filter((d) => d.adapted)
+    expect(adapted.length).toBeGreaterThan(0)
+    for (const d of adapted) {
+      const kinds = d.advice.map((a) => a.kind)
+      expect(kinds).not.toContain('seek-light')
+      expect(kinds).not.toContain('avoid-light')
+      expect(kinds).not.toContain('melatonin')
+      expect(kinds).toContain('sleep')
     }
   })
 

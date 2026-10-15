@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PARAMS, plan, type AdviceKind, type Trip } from './circadian'
 import {
   AXIS_ANCHOR_HOUR,
+  daylightSegmentsAt,
   KIND_EMOJI,
   axisFraction,
   axisFractionOfHour,
@@ -122,6 +123,32 @@ describe('daylightSegments', () => {
     expect(total).toBeCloseTo(0.5, 6) // still 12h of daylight
     // LA 06:00 is Beijing 21:00 that day: f = 9/24.
     expect(segs[0].f0).toBeCloseTo(9 / 24, 6)
+  })
+})
+
+describe('daylightSegmentsAt', () => {
+  const june = iso('2026-06-15T04:00:00Z')
+
+  it('uses real sunrise/sunset when coordinates are given', () => {
+    // Beijing in June: ~04:45-19:45, about 15h of daylight -- clearly
+    // distinguishable from the 12h fallback.
+    const segs = daylightSegmentsAt({ lat: 39.9, lon: 116.4 }, BJ, BJ, june)
+    const total = segs.reduce((a, s) => a + (s.f1 - s.f0), 0)
+    expect(total * 24).toBeGreaterThan(14.3)
+    expect(total * 24).toBeLessThan(15.7)
+  })
+
+  it('falls back to the 06:00-18:00 approximation without coordinates', () => {
+    const segs = daylightSegmentsAt(null, BJ, BJ, june)
+    const total = segs.reduce((a, s) => a + (s.f1 - s.f0), 0)
+    expect(total * 24).toBeCloseTo(12, 6)
+  })
+
+  it('renders polar day as full daylight and polar night as none', () => {
+    const tromso = { lat: 69.65, lon: 18.96 }
+    expect(daylightSegmentsAt(tromso, 'Europe/Oslo', BJ, june)).toEqual([{ f0: 0, f1: 1 }])
+    const midwinter = iso('2026-12-21T12:00:00Z')
+    expect(daylightSegmentsAt(tromso, 'Europe/Oslo', BJ, midwinter)).toEqual([])
   })
 })
 
