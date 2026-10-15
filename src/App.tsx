@@ -52,26 +52,37 @@ function PlaceTag({ place }: { place: Place }) {
 
 export default function App() {
   const [clock, setClock] = useClockFormat()
-  const [visDay, setVisDay] = useState(0)
+  const [pos, setPos] = useState(0)
   const [playing, setPlaying] = useState(false)
   const result = plan(demoTrip)
   const dayCount = result.days.length
+  const visDay = Math.min(dayCount - 1, Math.round(pos))
 
-  // Playback walks the plan and stops at the end rather than looping, so the
-  // chart settles on the adapted day.
+  // Playback is continuous: a requestAnimationFrame loop advances a
+  // fractional day position, and the chart interpolates its geometry. It
+  // settles on the final day rather than looping.
   useEffect(() => {
     if (!playing) return
-    const id = setInterval(() => {
-      setVisDay((d) => {
-        if (d >= dayCount - 1) {
+    const MS_PER_DAY = 1500
+    let raf = 0
+    let last: number | null = null
+    const step = (ts: number) => {
+      const dt = last === null ? 0 : ts - last
+      last = ts
+      setPos((p) => {
+        const next = p + dt / MS_PER_DAY
+        if (next >= dayCount - 1) {
           setPlaying(false)
-          return d
+          return dayCount - 1
         }
-        return d + 1
+        return next
       })
-    }, 1100)
-    return () => clearInterval(id)
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
   }, [playing, dayCount])
+
   const brief = briefing(result)
 
   return (
@@ -119,7 +130,7 @@ export default function App() {
           type="button"
           className="play"
           onClick={() => {
-            if (!playing && visDay >= dayCount - 1) setVisDay(0)
+            if (!playing && pos >= dayCount - 1) setPos(0)
             setPlaying((p) => !p)
           }}
           aria-label={playing ? 'Pause animation' : 'Play animation'}
@@ -134,17 +145,18 @@ export default function App() {
           id="dayslider"
           type="range"
           min={0}
-          max={result.days.length - 1}
-          value={visDay}
+          max={dayCount - 1}
+          step={0.02}
+          value={pos}
           onChange={(e) => {
             setPlaying(false)
-            setVisDay(Number(e.target.value))
+            setPos(Number(e.target.value))
           }}
         />
       </div>
       <DayVisual
         plan={result}
-        day={result.days[visDay]}
+        pos={pos}
         clock={clock}
         originZone={demoTrip.originZone}
         destinationZone={demoTrip.destinationZone}

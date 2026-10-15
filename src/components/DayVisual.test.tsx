@@ -18,62 +18,93 @@ const trips: Trip[] = [
   },
 ]
 
+const render = (trip: Trip, pos: number) =>
+  renderToStaticMarkup(
+    <DayVisual
+      plan={plan(trip)} pos={pos} clock="24h"
+      originZone={trip.originZone} destinationZone={trip.destinationZone}
+      habitualBedLocal={trip.habitualBedLocal} habitualWakeLocal={trip.habitualWakeLocal}
+    />,
+  )
+
+const todayTminX = (html: string) => Number(/cx="([\d.]+)" cy="[\d.]+" r="5.5"/.exec(html)![1])
+const goalTminX = (html: string) => Number(/cx="([\d.]+)" cy="[\d.]+" r="6"/.exec(html)![1])
+
 describe('DayVisual', () => {
   it('renders every day of both directions without NaN geometry', () => {
     for (const trip of trips) {
       const p = plan(trip)
-      for (const day of p.days) {
-        const html = renderToStaticMarkup(
-          <DayVisual
-            plan={p} day={day} clock="24h"
-            originZone={trip.originZone} destinationZone={trip.destinationZone}
-            habitualBedLocal={trip.habitualBedLocal} habitualWakeLocal={trip.habitualWakeLocal}
-          />,
-        )
+      for (let i = 0; i < p.days.length; i++) {
+        const html = render(trip, i)
         expect(html).toContain('<svg')
         expect(html).not.toContain('NaN')
-        expect(html).toContain('body clock')
-        // Tonight's sleep bar and both day/night strips are always present.
+        expect(html).toContain('body temp')
+        expect(html).toContain('CBTmin')
         expect(html).toContain('sleepbar')
         expect(html).toContain('nightband')
       }
     }
   })
 
-  it('keeps the axis rigid and moves the body clock across it', () => {
-    const p = plan(trips[0])
-    const render = (day: (typeof p.days)[number]) =>
-      renderToStaticMarkup(
-        <DayVisual
-          plan={p} day={day} clock="24h"
-          originZone={trips[0].originZone} destinationZone={trips[0].destinationZone}
-          habitualBedLocal={trips[0].habitualBedLocal} habitualWakeLocal={trips[0].habitualWakeLocal}
-        />,
-      )
-    const goalX = (html: string) => /class="tmin goal"/.exec(html) && /cx="([\d.]+)" cy="\d+" r="5"/.exec(html)![1]
-    const todayX = (html: string) => /cx="([\d.]+)" cy="\d+" r="4.5"/.exec(html)![1]
-
-    const first = render(p.days[0])
-    const last = render(p.days.at(-1)!)
-    // The goal marker and the axis labels never move...
-    expect(goalX(first)).toBe(goalX(last))
-    expect(first).toContain('>12:00</text>')
-    expect(last).toContain('>12:00</text>')
-    // ...while the body-clock low travels to meet the goal.
-    expect(todayX(first)).not.toBe(goalX(first))
-    expect(todayX(last)).toBe(goalX(last))
+  it('renders fractional positions without NaN, including past the ends', () => {
+    for (const pos of [-1, 0, 0.01, 0.5, 2.37, 3.999, 99]) {
+      expect(render(trips[0], pos)).not.toContain('NaN')
+    }
   })
 
-  it('says the clock has arrived on adapted days', () => {
+  it('keeps the axis rigid while CBTmin moves across it', () => {
     const p = plan(trips[0])
-    const adapted = p.days.find((d) => d.adapted)!
-    const html = renderToStaticMarkup(
-      <DayVisual
-        plan={p} day={adapted} clock="24h"
-        originZone={trips[0].originZone} destinationZone={trips[0].destinationZone}
-        habitualBedLocal={trips[0].habitualBedLocal} habitualWakeLocal={trips[0].habitualWakeLocal}
-      />,
-    )
-    expect(html).toContain('your clock has arrived')
+    const first = render(trips[0], 0)
+    const last = render(trips[0], p.days.length - 1)
+    // Goal marker and axis labels are identical on both...
+    expect(goalTminX(first)).toBe(goalTminX(last))
+    expect(first).toContain('>12:00</text>')
+    expect(last).toContain('>12:00</text>')
+    // ...while today's CBTmin travels to meet the goal.
+    expect(todayTminX(first)).not.toBe(goalTminX(first))
+    expect(todayTminX(last)).toBeCloseTo(goalTminX(last), 6)
+  })
+
+  it('interpolates CBTmin smoothly between days', () => {
+    const a = todayTminX(render(trips[0], 3))
+    const mid = todayTminX(render(trips[0], 3.5))
+    const b = todayTminX(render(trips[0], 4))
+    // The midpoint sits strictly between the two whole-day positions.
+    expect(mid).toBeGreaterThan(Math.min(a, b))
+    expect(mid).toBeLessThan(Math.max(a, b))
+    expect(mid).toBeCloseTo((a + b) / 2, 0)
+  })
+
+  it('labels the day by the nearest whole day, so text does not flicker', () => {
+    const label = (pos: number) => /aria-label="Circadian chart for day (\d+)"/.exec(render(trips[0], pos))![1]
+    expect(label(2)).toBe('3')
+    expect(label(2.4)).toBe('3')
+    expect(label(2.6)).toBe('4')
+    expect(label(3)).toBe('4')
+  })
+
+  it('puts origin time above destination time on the axis', () => {
+    const html = render(trips[0], 0)
+    const originLabel = html.indexOf('Los Angeles time')
+    const destLabel = html.indexOf('Beijing time')
+    expect(originLabel).toBeGreaterThan(-1)
+    expect(destLabel).toBeGreaterThan(originLabel)
+    // Colour-coding classes are present on both label and tick rows.
+    expect(html).toContain('class="axislab origin"')
+    expect(html).toContain('class="axislab dest"')
+    expect(html).toContain('class="tick origin"')
+    expect(html).toContain('class="tick dest"')
+  })
+
+  it('explains the circadian premise and uses CBTmin language', () => {
+    const html = render(trips[0], 0)
+    expect(html).toContain('circadian (24-hour) rhythm')
+    expect(html).toContain('CBTmin')
+    expect(html).not.toContain('body clock')
+  })
+
+  it('says CBTmin has arrived on the final day', () => {
+    const p = plan(trips[0])
+    expect(render(trips[0], p.days.length - 1)).toContain('has arrived on destination time')
   })
 })
