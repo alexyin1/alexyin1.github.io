@@ -187,16 +187,27 @@ export default function DayVisual(props: Props) {
       <figcaption>
         <p>
           Body temperature follows a circadian (24-hour) rhythm. The planner anchors on
-          the daily temperature minimum (<strong>CBTmin</strong>) and shifts it using
-          external cues — light, food, exercise and melatonin.
+          the daily temperature minimum (<strong className="cbt">CBTmin</strong>) and
+          shifts it using external cues — light, food, exercise and melatonin.
         </p>
         <p>
           The axis is fixed to {plan.destination.label} time, so everything else moves.
-          The solid wave is your CBTmin rhythm today; the dashed wave and outline mark
-          where your CBTmin and sleep need to end up.{' '}
-          {frame.remainingHours > 0.05
-            ? `About ${frame.remainingHours.toFixed(1)}h of shifting left — the ${KIND_EMOJI['seek-light']} and ${KIND_EMOJI['avoid-light']} windows sit on the side of CBTmin that pushes it the right way.`
-            : 'The two now line up: your CBTmin has arrived on destination time.'}
+          The solid wave is your <span className="cbt">CBTmin</span> rhythm today; the
+          dashed wave and outline mark where your <span className="cbt">CBTmin</span>{' '}
+          and sleep need to end up.{' '}
+          {frame.remainingHours > 0.05 ? (
+            <>
+              About {frame.remainingHours.toFixed(1)}h of shifting left — the{' '}
+              {KIND_EMOJI['seek-light']} and {KIND_EMOJI['avoid-light']} windows sit on
+              the side of <span className="cbt">CBTmin</span> that pushes it the right
+              way.
+            </>
+          ) : (
+            <>
+              The two now line up: your <span className="cbt">CBTmin</span> has arrived
+              on destination time.
+            </>
+          )}
         </p>
       </figcaption>
     </figure>

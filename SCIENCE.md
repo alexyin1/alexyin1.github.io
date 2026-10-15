@@ -12,8 +12,8 @@ Sleep Med Clin 4(2):241–255.**
 [PMC2829880](https://pmc.ncbi.nlm.nih.gov/articles/PMC2829880/)
 
 The planner is an implementation of this practical protocol: estimate the
-body-temperature minimum (Tmin), schedule bright light relative to it (light
-after Tmin advances the clock, light before it delays — the Khalsa et al. 2003
+body-temperature minimum (CBTmin), schedule bright light relative to it (light
+after CBTmin advances the clock, light before it delays — the Khalsa et al. 2003
 light PRC underlies this), pre-shift the sleep schedule before flying, and use
 low-dose melatonin for advances.
 
@@ -21,14 +21,14 @@ low-dose melatonin for advances.
 
 | Recommendation | Where in code | Source | Notes |
 |---|---|---|---|
-| Tmin ≈ 3.5h before habitual wake | `PARAMS.cbtMinBeforeWakeHours` | E&B | E&B give 3–4.5h after a full night; we use the middle of the range. |
+| CBTmin ≈ 3.5h before habitual wake | `PARAMS.cbtMinBeforeWakeHours` | E&B | E&B give 3–4.5h after a full night; we use the middle of the range. |
 | Advance ≤ ~1.5h/day after arrival | `PARAMS.advanceHoursPerDay` | E&B | Their planning rate with well-timed light + melatonin. |
 | Delay ≤ ~2h/day after arrival | `PARAMS.delayHoursPerDay` | E&B | Their planning rate with well-timed light. |
 | Pre-flight: shift sleep 1h/day | `PARAMS.preTravelHoursPerDay` | E&B | Their pre-adaptation protocol. |
 | Advance: bright light first ~3h after waking (pre-flight) | `plan()`, advance branch | E&B | "Maximize bright light in the first 3–4h after waking." |
-| Advance, after arrival: dim until Tmin passes, bright light after | `plan()`, landed advance branch | E&B / light PRC | Light before Tmin would push the wrong way; window keyed to simulated Tmin. |
+| Advance, after arrival: dim until CBTmin passes, bright light after | `plan()`, landed advance branch | E&B / light PRC | Light before CBTmin would push the wrong way; window keyed to simulated CBTmin. |
 | Delay: bright light last ~4h before bed (pre-flight) | `plan()`, delay branch | E&B | "Maximize bright light in the 3–4h before bedtime." |
-| Delay, after arrival: bright light in the ~6h before tomorrow's Tmin, dim in the ~6h after this morning's Tmin | `plan()`, landed delay branch | E&B / light PRC | Keyed to simulated Tmin, clipped to waking hours. |
+| Delay, after arrival: bright light in the ~6h before tomorrow's CBTmin, dim in the ~6h after this morning's CBTmin | `plan()`, landed delay branch | E&B / light PRC | Keyed to simulated CBTmin, clipped to waking hours. |
 | Melatonin 0.5 mg, ~5h before bedtime, advances only | `plan()`, advance branch | E&B; Revell et al. 2006 | 0.5 mg ≈ 3 mg in effect with fewer side effects. E&B include no melatonin in westward plans — no evidence it adds to well-timed light. |
 | Morning exercise on advances | `plan()`, advance branch | Youngstedt et al. 2019 | Exercise PRC: ~7 am (and 1–4 pm) exercise advances. [PMC6462487](https://pmc.ncbi.nlm.nih.gov/articles/PMC6462487/) |
 | Evening exercise on delays (bed−4h to bed−1h) | `plan()`, delay branch | Youngstedt et al. 2019 | Exercise PRC: ~7–10 pm exercise delays. |
@@ -42,7 +42,7 @@ low-dose melatonin for advances.
 |---|---|---|
 | Pre-flight shift capped at 3h total | `PARAMS.maxPreTravelShiftHours` | E&B describe 3–4 days of pre-shifting; we cap total displacement because shifting further while holding home work/family schedules rarely sticks. |
 | Post-arrival sleep snaps to local schedule, eased by 2h/1h/0 | `PARAMS.arrivalEaseHours`, anchored-night logic | The snap follows E&B's post-arrival framing (sleep local, let light do the circadian work); the specific easing allowance is ours. |
-| Tmin stepping as fixed hours/day | `plan()` pass 1 | Simplification. The underlying PRC is dose- and phase-dependent; E&B's planning rates approximate it, and we inherit that approximation. |
+| CBTmin stepping as fixed hours/day | `plan()` pass 1 | Simplification. The underlying PRC is dose- and phase-dependent; E&B's planning rates approximate it, and we inherit that approximation. |
 | Plans truncated at 16 days | `PARAMS.maxPlanDays` | Practicality. |
 | Dinner ≥3h before bed | briefing tip | General sleep hygiene, not re-entrainment evidence. |
 

@@ -19,7 +19,7 @@ export const SOURCES: Source[] = [
       'Eastman CI, Burgess HJ (2009). How To Travel the World Without Jet lag. Sleep Med Clin 4(2):241–255.',
     url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC2829880/',
     basis:
-      'The core protocol: Tmin-anchored light timing, pre-flight 1h/day sleep shifting, ~1.5h/day advance and ~2h/day delay rates, 0.5 mg melatonin ~5h before bedtime for advances only.',
+      'The core protocol: CBTmin-anchored light timing, pre-flight 1h/day sleep shifting, ~1.5h/day advance and ~2h/day delay rates, 0.5 mg melatonin ~5h before bedtime for advances only.',
   },
   {
     id: 'youngstedt-2019',

@@ -42,9 +42,9 @@ h1 { font-size: 1.6rem; margin: 0; }
 
 .direction {
   font-size: 1.3rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.01em;
   color: #333;
+  font-weight: 600;
   margin: 0;
   border: none;
   padding: 0;
@@ -177,15 +177,20 @@ footer {
 
 /* --- Day infographic ------------------------------------------------- */
 
-.vis-controls {
+.vis-controls { margin-bottom: 0.5rem; }
+
+.vis-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
 }
 
-.vis-controls label { font-size: 0.9rem; color: #444; }
+.vis-day {
+  display: block;
+  font-size: 0.9rem;
+  color: #444;
+  margin-bottom: 0.4rem;
+}
 .vis-controls input[type='range'] { flex: 1; min-width: 9rem; accent-color: #4a5aa8; }
 .vis-controls datalist { display: none; }
 
@@ -216,12 +221,10 @@ footer {
 
 /* Origin and destination each get one colour, used consistently on the row
    label, the day/night strip label and the matching axis tick row. */
-.dayvis .origin, .axislab.origin { fill: #a9663a; }
-.dayvis .dest, .axislab.dest { fill: #2f7d63; }
-
 .dayvis .rowlab { font-size: 14px; fill: #666; text-anchor: end; }
 .dayvis .axislab { font-size: 12.5px; text-anchor: end; font-weight: 600; }
-.dayvis .tick { font-size: 12.5px; }
+.dayvis .tick { font-size: 12.5px; fill: #666; }
+.dayvis .axislab { fill: #666; }
 .dayvis .gridline { stroke: #000; stroke-opacity: 0.07; }
 .dayvis .axisline { stroke: #ccc; }
 .dayvis .emoji { font-size: 17px; }
@@ -282,6 +285,7 @@ footer {
   line-height: 1.5;
 }
 .dayvis figcaption p { margin: 0 0 0.5rem; }
+.dayvis figcaption .cbt { color: #c2553f; font-weight: 600; }
 .dayvis figcaption p:last-child { margin-bottom: 0; }
 
 .k-emoji { font-size: 0.95em; }

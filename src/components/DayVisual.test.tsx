@@ -89,7 +89,8 @@ describe('DayVisual', () => {
     const destLabel = html.indexOf('Beijing time')
     expect(originLabel).toBeGreaterThan(-1)
     expect(destLabel).toBeGreaterThan(originLabel)
-    // Colour-coding classes are present on both label and tick rows.
+    // Rows keep semantic origin/dest classes (used for ordering and tests);
+    // their colour is neutral so the axis does not compete with the data.
     expect(html).toContain('class="axislab origin"')
     expect(html).toContain('class="axislab dest"')
     expect(html).toContain('class="tick origin"')
@@ -101,6 +102,16 @@ describe('DayVisual', () => {
     expect(html).toContain('circadian (24-hour) rhythm')
     expect(html).toContain('CBTmin')
     expect(html).not.toContain('body clock')
+  })
+
+  it('colour-codes CBTmin in the caption to match the curve', () => {
+    for (const pos of [0, plan(trips[0]).days.length - 1]) {
+      const html = render(trips[0], pos)
+      // Every caption mention is tagged, both the definition and the prose.
+      expect(html).toContain('class="cbt"')
+      const tagged = (html.match(/class="cbt">CBTmin</g) ?? []).length
+      expect(tagged).toBeGreaterThanOrEqual(3)
+    }
   })
 
   it('omits the melatonin legend entry on delay plans, keeps it on advances', () => {

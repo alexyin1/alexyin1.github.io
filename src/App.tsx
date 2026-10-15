@@ -171,6 +171,11 @@ export default function App() {
       <h2 className="itinerary-head">What the plan is doing</h2>
 
       <div className="vis-controls">
+        <label htmlFor="dayslider" className="vis-day">
+          Day {visDay + 1} of {result.days.length} — {result.days[visDay].date}{' '}
+          <span className="zone">({result.days[visDay].place.label})</span>
+        </label>
+        <div className="vis-row">
         <button
           type="button"
           className="play"
@@ -185,10 +190,6 @@ export default function App() {
         >
           {playing ? '⏸' : '▶'}
         </button>
-        <label htmlFor="dayslider">
-          Day {visDay + 1} of {result.days.length} — {result.days[visDay].date}{' '}
-          <span className="zone">({result.days[visDay].place.label})</span>
-        </label>
         <input
           id="dayslider"
           type="range"
@@ -207,6 +208,7 @@ export default function App() {
             <option key={d.index} value={d.index} label={`Day ${d.index + 1}`} />
           ))}
         </datalist>
+        </div>
       </div>
       <DayVisual
         plan={result}
