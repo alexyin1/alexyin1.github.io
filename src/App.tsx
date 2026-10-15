@@ -53,7 +53,25 @@ function PlaceTag({ place }: { place: Place }) {
 export default function App() {
   const [clock, setClock] = useClockFormat()
   const [visDay, setVisDay] = useState(0)
+  const [playing, setPlaying] = useState(false)
   const result = plan(demoTrip)
+  const dayCount = result.days.length
+
+  // Playback walks the plan and stops at the end rather than looping, so the
+  // chart settles on the adapted day.
+  useEffect(() => {
+    if (!playing) return
+    const id = setInterval(() => {
+      setVisDay((d) => {
+        if (d >= dayCount - 1) {
+          setPlaying(false)
+          return d
+        }
+        return d + 1
+      })
+    }, 1100)
+    return () => clearInterval(id)
+  }, [playing, dayCount])
   const brief = briefing(result)
 
   return (
@@ -97,6 +115,17 @@ export default function App() {
       <h2 className="itinerary-head">What the plan is doing</h2>
 
       <div className="vis-controls">
+        <button
+          type="button"
+          className="play"
+          onClick={() => {
+            if (!playing && visDay >= dayCount - 1) setVisDay(0)
+            setPlaying((p) => !p)
+          }}
+          aria-label={playing ? 'Pause animation' : 'Play animation'}
+        >
+          {playing ? '⏸' : '▶'}
+        </button>
         <label htmlFor="dayslider">
           Day {visDay + 1} of {result.days.length} — {result.days[visDay].date}{' '}
           <span className="zone">({result.days[visDay].place.label})</span>
@@ -107,7 +136,10 @@ export default function App() {
           min={0}
           max={result.days.length - 1}
           value={visDay}
-          onChange={(e) => setVisDay(Number(e.target.value))}
+          onChange={(e) => {
+            setPlaying(false)
+            setVisDay(Number(e.target.value))
+          }}
         />
       </div>
       <DayVisual

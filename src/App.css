@@ -185,7 +185,22 @@ footer {
 }
 
 .vis-controls label { font-size: 0.9rem; color: #444; }
-.vis-controls input[type='range'] { flex: 1; min-width: 10rem; accent-color: #4a5aa8; }
+.vis-controls input[type='range'] { flex: 1; min-width: 9rem; accent-color: #4a5aa8; }
+
+.play {
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid #ccc;
+  border-radius: 50%;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  flex: none;
+}
+.play:hover { background: #f3f3f3; }
 
 .dayvis {
   margin: 0;
@@ -195,38 +210,78 @@ footer {
   border-radius: 6px;
 }
 
-.dayvis svg { width: 100%; height: auto; display: block; }
+.dayvis svg { width: 100%; height: auto; display: block; overflow: visible; }
 
-.dayvis .rowlab { font-size: 11px; fill: #888; text-anchor: end; }
-.dayvis .tick { font-size: 10px; fill: #999; }
-.dayvis .gridline { stroke: #000; stroke-opacity: 0.05; }
-.dayvis .emoji { font-size: 12px; }
+.dayvis .rowlab { font-size: 11px; fill: #777; text-anchor: end; }
+.dayvis .axislab { font-size: 10px; fill: #999; text-anchor: end; }
+.dayvis .axislab.home { fill: #b6886a; }
+.dayvis .tick { font-size: 10px; fill: #888; }
+.dayvis .tick.home { fill: #b6886a; }
+.dayvis .gridline { stroke: #000; stroke-opacity: 0.06; }
+.dayvis .axisline { stroke: #ccc; }
+.dayvis .emoji { font-size: 13px; }
 
 .dayvis .curve { fill: none; stroke-width: 2; }
 .dayvis .curve.today { stroke: #c2553f; }
-.dayvis .curve.goal { stroke: #bbb; stroke-dasharray: 5 4; stroke-width: 1.5; }
+.dayvis .curve.goal { stroke: #aaa; stroke-dasharray: 5 4; stroke-width: 1.5; }
 .dayvis .tmin.today { fill: #c2553f; }
-.dayvis .tmin.goal { fill: none; stroke: #999; stroke-dasharray: 2 2; }
+.dayvis .tmin.goal { fill: #fff; stroke: #999; stroke-dasharray: 2.5 2.5; }
 .dayvis .annot { font-size: 10px; fill: #c2553f; }
-.dayvis .annot.goal { fill: #999; }
 
 .dayvis .sleepbar { fill: #4a5aa8; opacity: 0.9; }
-.dayvis .sleepref { fill: none; stroke-width: 1.5; }
-.dayvis .sleepref.home { stroke: #b6886a; stroke-dasharray: 3 3; }
-.dayvis .sleepref.dest { stroke: #3f8f6f; stroke-dasharray: 3 3; }
+.dayvis .sleeptarget { fill: none; stroke: #4a5aa8; stroke-width: 1.5; stroke-dasharray: 4 3; }
 
 .dayvis .nightband { fill: #2e3350; opacity: 0.85; }
-.dayvis .dayband { fill: #ffe9a8; }
+.dayvis .dayband { fill: #ffe08a; }
+
+/* Elements keep identity across days, so their positions animate. Path
+   shapes jump (CSS cannot morph d), which reads fine at this cadence. */
+.dayvis rect, .dayvis circle, .dayvis text { transition: x 0.45s ease, cx 0.45s ease, width 0.45s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .dayvis rect, .dayvis circle, .dayvis text { transition: none; }
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  list-style: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.82rem;
+  color: #555;
+}
+
+.lg-emoji { font-size: 1rem; }
+
+.lg-swatch {
+  width: 1.3rem;
+  height: 0.75rem;
+  flex: none;
+  border-radius: 2px;
+}
+.lg-swatch.curve-goal {
+  height: 0;
+  border-top: 2px dashed #aaa;
+  border-radius: 0;
+}
+.lg-swatch.sleep-target { border: 1.5px dashed #4a5aa8; }
+.lg-swatch.dayband { background: #ffe08a; }
 
 .dayvis figcaption {
-  margin-top: 0.6rem;
+  margin-top: 0.7rem;
   font-size: 0.85rem;
   color: #666;
   line-height: 1.45;
 }
-
-/* Slide transitions: elements keep identity across days, so position
-   changes animate. Path shapes jump (CSS cannot morph d), which is fine. */
-.dayvis rect, .dayvis circle, .dayvis text { transition: x 0.4s, cx 0.4s, width 0.4s; }
 
 .k-emoji { font-size: 0.95em; }

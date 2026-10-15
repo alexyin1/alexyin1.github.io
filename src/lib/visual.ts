@@ -2,147 +2,172 @@
  * Pure helpers behind the day-by-day infographic. Everything that involves
  * time math lives here, testable without a DOM; the SVG component only maps
  * these results to pixels.
+ *
+ * The chart axis is RIGID: a fixed 24h span of destination local time, the
+ * same on every day of the plan. Nothing about the axis moves, so the
+ * traveler's body clock, sleep and light windows visibly migrate across it
+ * toward fixed goal markers. The axis is anchored at midday so the
+ * destination night -- where everything is headed -- sits in the middle
+ * rather than being split across both edges.
  */
 
-import { DateTime, Duration } from 'luxon'
-import { PARAMS, type AdviceKind } from './circadian'
+import { DateTime } from 'luxon'
+import { PARAMS, offsetHoursAt, type AdviceKind } from './circadian'
+
+/** Destination local hour at the left edge of the axis. */
+export const AXIS_ANCHOR_HOUR = 12
 
 export const KIND_EMOJI: Record<AdviceKind, string> = {
-  'seek-light': '🌞',
-  'avoid-light': '🕶️',
   sleep: '😴',
+  'seek-light': '☀️',
+  'avoid-light': '🕶️',
   melatonin: '💊',
-  exercise: '🏃‍♀️',
+  exercise: '🏃',
   meal: '🍽️',
 }
 
-export interface Interval {
-  start: Date
-  end: Date
+/** A span on the axis in 0..1 coordinates. A wrapped window yields two. */
+export interface Seg {
+  f0: number
+  f1: number
 }
 
-function hoursDur(n: number): Duration {
-  return Duration.fromObject({ hours: n })
+function parseHHmm(s: string): number {
+  const [h, m] = s.split(':').map(Number)
+  return h + m / 60
+}
+
+function mod24(h: number): number {
+  return ((h % 24) + 24) % 24
+}
+
+/** Local time of day, in decimal hours, of an instant in a zone. */
+export function localHourDecimal(at: Date, zone: string): number {
+  const dt = DateTime.fromJSDate(at, { zone })
+  return dt.hour + dt.minute / 60 + dt.second / 3600
+}
+
+/** Destination local hour at axis position `f`. */
+export function axisHourAt(f: number, anchorHour = AXIS_ANCHOR_HOUR): number {
+  return mod24(anchorHour + f * 24)
+}
+
+/** Axis position of an instant, by its time of day in `axisZone`. */
+export function axisFraction(at: Date, axisZone: string, anchorHour = AXIS_ANCHOR_HOUR): number {
+  return mod24(localHourDecimal(at, axisZone) - anchorHour) / 24
+}
+
+/** Axis position of a bare local hour in the axis zone. */
+export function axisFractionOfHour(hour: number, anchorHour = AXIS_ANCHOR_HOUR): number {
+  return mod24(hour - anchorHour) / 24
 }
 
 /**
- * Daylight intervals for a zone, clipped to [start, end].
- *
- * Approximation: daylight is 06:00-18:00 local, i.e. equinox at the zone's
- * reference meridian. Good enough to show "your evening is their morning";
- * real sunrise/sunset needs coordinates, which arrive with airport data.
+ * Segments for a window starting at axis position `f0` and lasting
+ * `durationHours`, splitting in two if it runs off the right edge.
  */
-export function daylightIntervals(zone: string, start: Date, end: Date): Interval[] {
-  const out: Interval[] = []
-  let cursor = DateTime.fromJSDate(start, { zone }).startOf('day').minus({ days: 1 })
-  const stop = DateTime.fromJSDate(end, { zone })
-  while (cursor <= stop) {
-    const dayStart = cursor.set({ hour: 6 })
-    const dayEnd = cursor.set({ hour: 18 })
-    const s = Math.max(dayStart.toMillis(), start.getTime())
-    const e = Math.min(dayEnd.toMillis(), end.getTime())
-    if (e > s) out.push({ start: new Date(s), end: new Date(e) })
-    cursor = cursor.plus({ days: 1 })
-  }
-  return out
+export function segmentsFrom(f0: number, durationHours: number): Seg[] {
+  if (durationHours >= 24) return [{ f0: 0, f1: 1 }]
+  if (durationHours <= 0) return []
+  const f1 = f0 + durationHours / 24
+  if (f1 <= 1) return [{ f0, f1 }]
+  return [
+    { f0, f1: 1 },
+    { f0: 0, f1: f1 - 1 },
+  ]
+}
+
+/** Segments for an absolute interval, projected onto the axis. */
+export function intervalSegments(
+  start: Date,
+  end: Date,
+  axisZone: string,
+  anchorHour = AXIS_ANCHOR_HOUR,
+): Seg[] {
+  const durationHours = (end.getTime() - start.getTime()) / 3.6e6
+  return segmentsFrom(axisFraction(start, axisZone, anchorHour), durationHours)
 }
 
 /**
- * Occurrences of the habitual sleep window ('HH:mm' bed to wake, local to
- * `zone`), clipped to [start, end]. Used to draw the reference schedule a
- * traveler is coming from or heading toward.
+ * Segments for a window expressed on another zone's local clock -- e.g. the
+ * traveler's habitual 23:00-07:00 at home, or a city's daylight hours --
+ * projected onto the destination-time axis.
  */
-export function habitualSleepIntervals(
+export function localWindowSegments(
   zone: string,
-  bedLocal: string,
-  wakeLocal: string,
-  start: Date,
-  end: Date,
-): Interval[] {
-  const [bh, bm] = bedLocal.split(':').map(Number)
-  const [wh, wm] = wakeLocal.split(':').map(Number)
-  const out: Interval[] = []
-  let cursor = DateTime.fromJSDate(start, { zone }).startOf('day').minus({ days: 1 })
-  const stop = DateTime.fromJSDate(end, { zone }).plus({ days: 1 })
-  while (cursor <= stop) {
-    const bed = cursor.set({ hour: bh, minute: bm })
-    let wake = cursor.set({ hour: wh, minute: wm })
-    if (wake <= bed) wake = wake.plus({ days: 1 })
-    const s = Math.max(bed.toMillis(), start.getTime())
-    const e = Math.min(wake.toMillis(), end.getTime())
-    if (e > s) out.push({ start: new Date(s), end: new Date(e) })
-    cursor = cursor.plus({ days: 1 })
-  }
-  return out
+  startLocal: string,
+  durationHours: number,
+  axisZone: string,
+  reference: Date,
+  anchorHour = AXIS_ANCHOR_HOUR,
+): Seg[] {
+  const delta = offsetHoursAt(axisZone, reference) - offsetHoursAt(zone, reference)
+  const startOnAxis = parseHHmm(startLocal) + delta
+  return segmentsFrom(axisFractionOfHour(startOnAxis, anchorHour), durationHours)
 }
 
 /**
- * Where the body-clock low (Tmin) should end up: the habitual wake time in
- * destination local time minus the Tmin offset, at the occurrence nearest
- * `near`. The gap between a day's simulated Tmin and this target is the
- * remaining shift, made visible.
+ * Approximate daylight for a zone on the axis. Daylight is taken as
+ * 06:00-18:00 local, i.e. equinox at the zone's reference meridian -- good
+ * enough to show "your evening is their morning". Real sunrise/sunset needs
+ * coordinates, which arrive with airport data.
  */
-export function targetTmin(destinationZone: string, habitualWakeLocal: string, near: Date): Date {
-  const [wh, wm] = habitualWakeLocal.split(':').map(Number)
-  const base = DateTime.fromJSDate(near, { zone: destinationZone })
-  let best: DateTime | null = null
-  for (const dayOffset of [-1, 0, 1]) {
-    const candidate = base
-      .plus({ days: dayOffset })
-      .set({ hour: wh, minute: wm, second: 0, millisecond: 0 })
-      .minus(hoursDur(PARAMS.cbtMinBeforeWakeHours))
-    if (!best || Math.abs(candidate.toMillis() - near.getTime()) < Math.abs(best.toMillis() - near.getTime())) {
-      best = candidate
-    }
-  }
-  return best!.toJSDate()
+export function daylightSegments(
+  zone: string,
+  axisZone: string,
+  reference: Date,
+  anchorHour = AXIS_ANCHOR_HOUR,
+): Seg[] {
+  return localWindowSegments(zone, '06:00', 12, axisZone, reference, anchorHour)
+}
+
+/** Hours between a habitual bed and wake time, handling the midnight wrap. */
+export function sleepDurationHours(bedLocal: string, wakeLocal: string): number {
+  const d = parseHHmm(wakeLocal) - parseHHmm(bedLocal)
+  return d <= 0 ? d + 24 : d
 }
 
 /**
- * Schematic core-body-temperature curve: a 24h cosine with its minimum at
- * `tminAt`, sampled across [start, end] as {f, v} pairs where f is the 0..1
- * position on the x-axis and v is -1 (the low) to +1 (the afternoon peak).
+ * Destination local hour the body-clock low should end up at: habitual wake
+ * minus the Tmin offset. Fixed on the axis, so it makes a stable goal marker.
  */
-export function temperatureCurve(
-  tminAt: Date,
-  start: Date,
-  end: Date,
-  samples = 97,
+export function targetTminHour(habitualWakeLocal: string): number {
+  return mod24(parseHHmm(habitualWakeLocal) - PARAMS.cbtMinBeforeWakeHours)
+}
+
+/**
+ * Schematic core-body-temperature curve sampled in axis coordinates: a 24h
+ * cosine with its minimum at local hour `tminHour`, returning {f, v} with
+ * v from -1 (the low) to +1 (the afternoon peak).
+ */
+export function temperatureCurveOnAxis(
+  tminHour: number,
+  anchorHour = AXIS_ANCHOR_HOUR,
+  samples = 145,
 ): { f: number; v: number }[] {
-  const span = end.getTime() - start.getTime()
   const out: { f: number; v: number }[] = []
   for (let i = 0; i < samples; i++) {
     const f = i / (samples - 1)
-    const t = start.getTime() + f * span
-    const phaseHours = (t - tminAt.getTime()) / 3.6e6
-    out.push({ f, v: -Math.cos((2 * Math.PI * phaseHours) / 24) })
+    const hoursFromTmin = anchorHour + f * 24 - tminHour
+    out.push({ f, v: -Math.cos((2 * Math.PI * hoursFromTmin) / 24) })
   }
   return out
 }
 
-/** 0..1 position of an instant on the [start, end] axis, clamped. */
-export function fractionOf(at: Date, start: Date, end: Date): number {
-  const f = (at.getTime() - start.getTime()) / (end.getTime() - start.getTime())
-  return Math.max(0, Math.min(1, f))
-}
-
-/** Hour ticks (every `stepHours` on the local clock of `zone`) within the axis. */
-export function hourTicks(
-  zone: string,
-  start: Date,
-  end: Date,
-  stepHours = 6,
-): { at: Date; label: string }[] {
-  const out: { at: Date; label: string }[] = []
-  let cursor = DateTime.fromJSDate(start, { zone }).startOf('hour')
-  // Advance to the next multiple of stepHours on the local clock.
-  while (cursor.hour % stepHours !== 0 || cursor.toJSDate() < start) {
-    cursor = cursor.plus({ hours: 1 })
-  }
-  const stop = DateTime.fromJSDate(end, { zone })
-  while (cursor <= stop) {
-    out.push({ at: cursor.toJSDate(), label: cursor.toFormat('HH:mm') })
-    cursor = cursor.plus({ hours: stepHours })
+/** Evenly spaced axis ticks, as destination local hours. */
+export function axisTicks(stepHours = 3, anchorHour = AXIS_ANCHOR_HOUR): { f: number; hour: number }[] {
+  const out: { f: number; hour: number }[] = []
+  for (let h = 0; h <= 24; h += stepHours) {
+    out.push({ f: h / 24, hour: mod24(anchorHour + h) })
   }
   return out
+}
+
+/** Short label for a whole local hour, e.g. '15:00' or '3 PM'. */
+export function formatHourLabel(hour: number, clock: '24h' | '12h'): string {
+  const h = mod24(Math.round(hour))
+  if (clock === '24h') return `${String(h).padStart(2, '0')}:00`
+  const suffix = h < 12 ? 'AM' : 'PM'
+  const display = h % 12 === 0 ? 12 : h % 12
+  return `${display} ${suffix}`
 }

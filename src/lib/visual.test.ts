@@ -1,134 +1,203 @@
 import { describe, expect, it } from 'vitest'
-import { DateTime } from 'luxon'
-import { PARAMS, type AdviceKind } from './circadian'
+import { PARAMS, plan, type AdviceKind, type Trip } from './circadian'
 import {
+  AXIS_ANCHOR_HOUR,
   KIND_EMOJI,
-  daylightIntervals,
-  fractionOf,
-  habitualSleepIntervals,
-  hourTicks,
-  targetTmin,
-  temperatureCurve,
+  axisFraction,
+  axisFractionOfHour,
+  axisHourAt,
+  axisTicks,
+  daylightSegments,
+  formatHourLabel,
+  intervalSegments,
+  localHourDecimal,
+  localWindowSegments,
+  segmentsFrom,
+  sleepDurationHours,
+  targetTminHour,
+  temperatureCurveOnAxis,
 } from './visual'
 
 const iso = (s: string) => new Date(s)
+const BJ = 'Asia/Shanghai'
+const LA = 'America/Los_Angeles'
 
 describe('KIND_EMOJI', () => {
   it('covers every advice kind', () => {
     const kinds: AdviceKind[] = ['sleep', 'seek-light', 'avoid-light', 'melatonin', 'exercise', 'meal']
-    for (const k of kinds) {
-      expect(KIND_EMOJI[k]).toBeTruthy()
+    for (const k of kinds) expect(KIND_EMOJI[k]).toBeTruthy()
+  })
+})
+
+describe('the axis is rigid', () => {
+  it('anchors at midday so the destination night sits mid-axis', () => {
+    expect(AXIS_ANCHOR_HOUR).toBe(12)
+    expect(axisHourAt(0)).toBe(12)
+    expect(axisHourAt(0.5)).toBe(0) // midnight at the centre
+    expect(axisHourAt(1)).toBe(12)
+    expect(axisFractionOfHour(12)).toBe(0)
+    expect(axisFractionOfHour(0)).toBeCloseTo(0.5, 9)
+  })
+
+  it('maps instants by destination time of day, not by plan day', () => {
+    // 03:30 Beijing on two different dates lands on the same axis position.
+    const a = iso('2026-06-02T19:30:00Z')
+    const b = iso('2026-06-05T19:30:00Z')
+    expect(localHourDecimal(a, BJ)).toBeCloseTo(3.5, 6)
+    expect(axisFraction(a, BJ)).toBeCloseTo(axisFraction(b, BJ), 9)
+  })
+
+  it('places the same instant differently on each zone clock', () => {
+    const at = iso('2026-06-02T19:30:00Z') // 03:30 Beijing, 12:30 LA
+    expect(axisFraction(at, BJ)).toBeCloseTo((3.5 - 12 + 24) / 24, 6)
+    expect(axisFraction(at, LA)).toBeCloseTo(0.5 / 24, 6)
+  })
+})
+
+describe('segmentsFrom', () => {
+  it('returns a single span when it fits', () => {
+    expect(segmentsFrom(0.25, 6)).toEqual([{ f0: 0.25, f1: 0.5 }])
+  })
+
+  it('splits a span that runs off the right edge', () => {
+    const segs = segmentsFrom(0.875, 6) // 3h to the edge, 3h wrapped
+    expect(segs).toHaveLength(2)
+    expect(segs[0]).toEqual({ f0: 0.875, f1: 1 })
+    expect(segs[1].f0).toBe(0)
+    expect(segs[1].f1).toBeCloseTo(0.125, 9)
+  })
+
+  it('clamps a full day and drops an empty window', () => {
+    expect(segmentsFrom(0.3, 24)).toEqual([{ f0: 0, f1: 1 }])
+    expect(segmentsFrom(0.3, 0)).toEqual([])
+  })
+
+  it('keeps total width equal to the duration when wrapping', () => {
+    for (const f0 of [0, 0.4, 0.9, 0.99]) {
+      const total = segmentsFrom(f0, 8).reduce((a, s) => a + (s.f1 - s.f0), 0)
+      expect(total).toBeCloseTo(8 / 24, 9)
     }
   })
 })
 
-describe('daylightIntervals', () => {
-  it('returns 06:00-18:00 local blocks clipped to the range', () => {
-    // 24h window starting at noon Beijing: expect the back half of today's
-    // daylight and the front half of tomorrow's.
-    const start = iso('2026-06-02T04:00:00Z') // 12:00 Beijing
-    const end = iso('2026-06-03T04:00:00Z')
-    const spans = daylightIntervals('Asia/Shanghai', start, end)
-    expect(spans).toHaveLength(2)
-    expect(DateTime.fromJSDate(spans[0].start, { zone: 'Asia/Shanghai' }).hour).toBe(12)
-    expect(DateTime.fromJSDate(spans[0].end, { zone: 'Asia/Shanghai' }).hour).toBe(18)
-    expect(DateTime.fromJSDate(spans[1].start, { zone: 'Asia/Shanghai' }).hour).toBe(6)
-    expect(DateTime.fromJSDate(spans[1].end, { zone: 'Asia/Shanghai' }).hour).toBe(12)
+describe('intervalSegments', () => {
+  it('projects an overnight sleep window across the axis centre', () => {
+    // 23:00-07:00 Beijing: starts at 23:00 (f=11/24) and runs 8h without
+    // wrapping, because the axis centre is midnight.
+    const segs = intervalSegments(iso('2026-06-02T15:00:00Z'), iso('2026-06-02T23:00:00Z'), BJ)
+    expect(segs).toHaveLength(1)
+    expect(segs[0].f0).toBeCloseTo(11 / 24, 6)
+    expect(segs[0].f1).toBeCloseTo(19 / 24, 6)
+  })
+})
+
+describe('localWindowSegments', () => {
+  it('projects a home-clock window onto the destination axis', () => {
+    // 23:00 LA on 2026-06-02 is 14:00 Beijing (+15h): f = 2/24.
+    const segs = localWindowSegments(LA, '23:00', 8, BJ, iso('2026-06-02T12:00:00Z'))
+    expect(segs).toHaveLength(1)
+    expect(segs[0].f0).toBeCloseTo(2 / 24, 6)
   })
 
-  it('never emits an interval outside the requested range', () => {
-    const start = iso('2026-06-02T04:00:00Z')
-    const end = iso('2026-06-03T04:00:00Z')
-    for (const zone of ['Asia/Shanghai', 'America/Los_Angeles']) {
-      for (const s of daylightIntervals(zone, start, end)) {
-        expect(s.start.getTime()).toBeGreaterThanOrEqual(start.getTime())
-        expect(s.end.getTime()).toBeLessThanOrEqual(end.getTime())
-        expect(s.end.getTime()).toBeGreaterThan(s.start.getTime())
-      }
+  it('is the identity when the window is already on the axis zone', () => {
+    const segs = localWindowSegments(BJ, '23:00', 8, BJ, iso('2026-06-02T12:00:00Z'))
+    expect(segs[0].f0).toBeCloseTo(11 / 24, 6)
+  })
+})
+
+describe('daylightSegments', () => {
+  it('puts destination daylight at both ends, night in the middle', () => {
+    const segs = daylightSegments(BJ, BJ, iso('2026-06-02T12:00:00Z'))
+    // 06:00-18:00 on a midday-anchored axis = [0, 0.25] and [0.75, 1].
+    expect(segs).toHaveLength(2)
+    expect(segs[0].f0).toBeCloseTo(0.75, 6)
+    expect(segs[0].f1).toBe(1)
+    expect(segs[1].f0).toBe(0)
+    expect(segs[1].f1).toBeCloseTo(0.25, 6)
+  })
+
+  it('offsets the origin strip by the zone difference', () => {
+    const segs = daylightSegments(LA, BJ, iso('2026-06-02T12:00:00Z'))
+    const total = segs.reduce((a, s) => a + (s.f1 - s.f0), 0)
+    expect(total).toBeCloseTo(0.5, 6) // still 12h of daylight
+    // LA 06:00 is Beijing 21:00 that day: f = 9/24.
+    expect(segs[0].f0).toBeCloseTo(9 / 24, 6)
+  })
+})
+
+describe('targets', () => {
+  it('target Tmin is habitual wake minus the Tmin offset', () => {
+    expect(targetTminHour('07:00')).toBeCloseTo(7 - PARAMS.cbtMinBeforeWakeHours, 9)
+    expect(targetTminHour('01:00')).toBeCloseTo(24 + 1 - PARAMS.cbtMinBeforeWakeHours, 9)
+  })
+
+  it('sleep duration handles the midnight wrap', () => {
+    expect(sleepDurationHours('23:00', '07:00')).toBe(8)
+    expect(sleepDurationHours('01:00', '09:00')).toBe(8)
+    expect(sleepDurationHours('22:30', '06:00')).toBeCloseTo(7.5, 9)
+  })
+})
+
+describe('temperatureCurveOnAxis', () => {
+  it('dips at the given local hour and peaks 12h away', () => {
+    const pts = temperatureCurveOnAxis(3.5, AXIS_ANCHOR_HOUR, 577)
+    const lo = pts.reduce((a, b) => (b.v < a.v ? b : a))
+    const hi = pts.reduce((a, b) => (b.v > a.v ? b : a))
+    expect(axisHourAt(lo.f)).toBeCloseTo(3.5, 1)
+    expect(lo.v).toBeCloseTo(-1, 4)
+    expect(axisHourAt(hi.f)).toBeCloseTo(15.5, 1)
+  })
+
+  it('is continuous across the axis, including the edges', () => {
+    const pts = temperatureCurveOnAxis(3.5)
+    for (let i = 1; i < pts.length; i++) {
+      expect(Math.abs(pts[i].v - pts[i - 1].v)).toBeLessThan(0.1)
     }
+    // A 24h span starts and ends at the same phase.
+    expect(pts[0].v).toBeCloseTo(pts[pts.length - 1].v, 6)
   })
 })
 
-describe('habitualSleepIntervals', () => {
-  it('finds the overnight window crossing midnight', () => {
-    const start = iso('2026-06-02T00:00:00Z')
-    const end = iso('2026-06-03T00:00:00Z')
-    const spans = habitualSleepIntervals('America/Los_Angeles', '23:00', '07:00', start, end)
-    // The LA night of June 1->2 is in progress at range start (23:00 June 1
-    // PDT = 06:00Z June 2), and the June 2->3 night starts 06:00Z June 3...
-    // clipped out. Expect exactly the in-progress night.
-    expect(spans.length).toBeGreaterThanOrEqual(1)
-    const first = spans[0]
-    const localEnd = DateTime.fromJSDate(first.end, { zone: 'America/Los_Angeles' })
-    expect(localEnd.hour).toBe(7)
-    expect((first.end.getTime() - first.start.getTime()) / 3.6e6).toBeLessThanOrEqual(8)
+describe('axis labels', () => {
+  it('ticks span the axis inclusively on whole hours', () => {
+    const ticks = axisTicks(3)
+    expect(ticks).toHaveLength(9)
+    expect(ticks[0]).toEqual({ f: 0, hour: 12 })
+    expect(ticks[4]).toEqual({ f: 0.5, hour: 0 })
+    expect(ticks[8]).toEqual({ f: 1, hour: 12 })
   })
 
-  it('handles a non-crossing window', () => {
-    const start = iso('2026-06-02T00:00:00Z')
-    const end = iso('2026-06-04T00:00:00Z')
-    const spans = habitualSleepIntervals('Asia/Shanghai', '01:00', '09:00', start, end)
-    for (const s of spans) {
-      expect((s.end.getTime() - s.start.getTime()) / 3.6e6).toBeLessThanOrEqual(8)
+  it('formats hours in both clock modes, wrapping negatives', () => {
+    expect(formatHourLabel(15, '24h')).toBe('15:00')
+    expect(formatHourLabel(0, '24h')).toBe('00:00')
+    expect(formatHourLabel(0, '12h')).toBe('12 AM')
+    expect(formatHourLabel(12, '12h')).toBe('12 PM')
+    expect(formatHourLabel(15, '12h')).toBe('3 PM')
+    // Home-time labels can go negative after the offset subtraction.
+    expect(formatHourLabel(-3, '24h')).toBe('21:00')
+    expect(formatHourLabel(27, '24h')).toBe('03:00')
+  })
+})
+
+describe('the plan converges on the axis', () => {
+  const trip: Trip = {
+    originZone: LA, destinationZone: BJ,
+    departUtc: iso('2026-06-01T20:00:00Z'), arriveUtc: iso('2026-06-02T08:30:00Z'),
+    habitualBedLocal: '23:00', habitualWakeLocal: '07:00', preTravelDays: 3,
+  }
+
+  it('moves the body-clock low monotonically toward the fixed target', () => {
+    const p = plan(trip)
+    const goal = targetTminHour(trip.habitualWakeLocal)
+    const gaps = p.days.map((d) => {
+      const h = localHourDecimal(d.nextCbtMin, BJ)
+      const raw = Math.abs(h - goal)
+      return Math.min(raw, 24 - raw)
+    })
+    for (let i = 1; i < gaps.length; i++) {
+      expect(gaps[i]).toBeLessThanOrEqual(gaps[i - 1] + 1e-6)
     }
-    expect(spans.length).toBeGreaterThanOrEqual(2)
-  })
-})
-
-describe('targetTmin', () => {
-  it('is the destination habitual wake minus the Tmin offset, nearest the probe', () => {
-    // Habitual wake 07:00 Beijing, offset 3.5h -> Tmin target 03:30 Beijing.
-    const near = iso('2026-06-05T18:00:00Z') // 02:00 Beijing June 6
-    const t = targetTmin('Asia/Shanghai', '07:00', near)
-    const local = DateTime.fromJSDate(t, { zone: 'Asia/Shanghai' })
-    expect(local.hour).toBe(7 - Math.ceil(PARAMS.cbtMinBeforeWakeHours))
-    expect(local.minute).toBe(30)
-    // Nearest occurrence: same local morning (June 6), not a day off.
-    expect(local.day).toBe(6)
-  })
-
-  it('picks the occurrence across a date boundary when closer', () => {
-    const near = iso('2026-06-06T14:00:00Z') // 22:00 Beijing June 6
-    const t = targetTmin('Asia/Shanghai', '07:00', near)
-    const local = DateTime.fromJSDate(t, { zone: 'Asia/Shanghai' })
-    expect(local.day).toBe(7) // next morning is closer than this morning
-  })
-})
-
-describe('temperatureCurve', () => {
-  it('has its minimum at Tmin and peak ~12h away', () => {
-    const start = iso('2026-06-02T00:00:00Z')
-    const end = iso('2026-06-03T00:00:00Z')
-    const tmin = iso('2026-06-02T06:00:00Z')
-    const pts = temperatureCurve(tmin, start, end, 241)
-    const minPt = pts.reduce((a, b) => (b.v < a.v ? b : a))
-    expect(minPt.f).toBeCloseTo(0.25, 2) // 06:00 of a 24h axis
-    expect(minPt.v).toBeCloseTo(-1, 3)
-    const maxPt = pts.reduce((a, b) => (b.v > a.v ? b : a))
-    expect(maxPt.f).toBeCloseTo(0.75, 2)
-  })
-})
-
-describe('axis helpers', () => {
-  it('fractionOf clamps and interpolates', () => {
-    const start = iso('2026-06-02T00:00:00Z')
-    const end = iso('2026-06-03T00:00:00Z')
-    expect(fractionOf(iso('2026-06-02T12:00:00Z'), start, end)).toBeCloseTo(0.5, 6)
-    expect(fractionOf(iso('2026-06-01T00:00:00Z'), start, end)).toBe(0)
-    expect(fractionOf(iso('2026-06-04T00:00:00Z'), start, end)).toBe(1)
-  })
-
-  it('hourTicks lands on local-clock multiples of the step', () => {
-    const start = iso('2026-06-02T04:30:00Z')
-    const end = iso('2026-06-03T04:30:00Z')
-    const ticks = hourTicks('Asia/Shanghai', start, end, 6)
-    expect(ticks.length).toBeGreaterThanOrEqual(4)
-    for (const t of ticks) {
-      const local = DateTime.fromJSDate(t.at, { zone: 'Asia/Shanghai' })
-      expect(local.hour % 6).toBe(0)
-      expect(local.minute).toBe(0)
-      expect(t.at.getTime()).toBeGreaterThanOrEqual(start.getTime())
-      expect(t.at.getTime()).toBeLessThanOrEqual(end.getTime())
-    }
+    expect(gaps[0]).toBeGreaterThan(3)
+    expect(gaps.at(-1)!).toBeCloseTo(0, 6)
   })
 })

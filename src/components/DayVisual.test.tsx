@@ -32,12 +32,36 @@ describe('DayVisual', () => {
         )
         expect(html).toContain('<svg')
         expect(html).not.toContain('NaN')
-        expect(html).toContain('body temp')
+        expect(html).toContain('body clock')
         // Tonight's sleep bar and both day/night strips are always present.
         expect(html).toContain('sleepbar')
         expect(html).toContain('nightband')
       }
     }
+  })
+
+  it('keeps the axis rigid and moves the body clock across it', () => {
+    const p = plan(trips[0])
+    const render = (day: (typeof p.days)[number]) =>
+      renderToStaticMarkup(
+        <DayVisual
+          plan={p} day={day} clock="24h"
+          originZone={trips[0].originZone} destinationZone={trips[0].destinationZone}
+          habitualBedLocal={trips[0].habitualBedLocal} habitualWakeLocal={trips[0].habitualWakeLocal}
+        />,
+      )
+    const goalX = (html: string) => /class="tmin goal"/.exec(html) && /cx="([\d.]+)" cy="\d+" r="5"/.exec(html)![1]
+    const todayX = (html: string) => /cx="([\d.]+)" cy="\d+" r="4.5"/.exec(html)![1]
+
+    const first = render(p.days[0])
+    const last = render(p.days.at(-1)!)
+    // The goal marker and the axis labels never move...
+    expect(goalX(first)).toBe(goalX(last))
+    expect(first).toContain('>12:00</text>')
+    expect(last).toContain('>12:00</text>')
+    // ...while the body-clock low travels to meet the goal.
+    expect(todayX(first)).not.toBe(goalX(first))
+    expect(todayX(last)).toBe(goalX(last))
   })
 
   it('says the clock has arrived on adapted days', () => {
@@ -50,6 +74,6 @@ describe('DayVisual', () => {
         habitualBedLocal={trips[0].habitualBedLocal} habitualWakeLocal={trips[0].habitualWakeLocal}
       />,
     )
-    expect(html).toContain('it has arrived')
+    expect(html).toContain('your clock has arrived')
   })
 })
