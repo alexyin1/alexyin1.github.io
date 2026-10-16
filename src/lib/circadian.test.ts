@@ -527,31 +527,18 @@ describe('plan: day orientation', () => {
     expect(firstOfKind(lateNight!.advice, 'sleep').start.getTime()).toBe(lateNight!.bed.getTime())
   })
 
-  it('keeps sleep coupled to CBTmin before arrival, decoupled after', () => {
-    // The westward trip makes the decoupling visible: anchored bedtimes ease
-    // 1h/night while CBTmin delays 2h/night, so the wake-to-CBTmin gap
-    // drifts off the fixed pre-arrival coupling. (On this advance trip the
-    // easing happens to shrink in step with the rate, masking it.)
+  it('keeps sleep coupled to CBTmin for the whole plan', () => {
     const p = plan(westward)
+    // Wake tracks CBTmin at the fixed physiological offset on every day,
+    // before and after arrival -- which is what keeps the schedule moving at
+    // the day's rate instead of snapping on arrival.
     for (const day of p.days) {
-      if (day.wake.getTime() < westward.arriveUtc.getTime()) {
-        // Pre-arrival, wake tracks CBTmin at the fixed physiological offset.
-        expect(day.cbtMin.getTime()).toBeLessThan(day.wake.getTime())
-        expect((day.wake.getTime() - day.cbtMin.getTime()) / 3.6e6).toBeCloseTo(
-          PARAMS.cbtMinBeforeWakeHours,
-          6,
-        )
-      }
+      expect(day.cbtMin.getTime()).toBeLessThan(day.wake.getTime())
+      expect((day.wake.getTime() - day.cbtMin.getTime()) / 3.6e6).toBeCloseTo(
+        PARAMS.cbtMinBeforeWakeHours,
+        6,
+      )
     }
-    // Post-arrival, sleep is local-anchored while CBTmin moves underneath,
-    // so the wake-to-CBTmin gap departs from the fixed pre-arrival coupling.
-    const landedDays = p.days.filter((d) => d.wake.getTime() >= westward.arriveUtc.getTime())
-    expect(landedDays.length).toBeGreaterThan(0)
-    const offAxis = landedDays.filter((d) => {
-      const gapH = (d.wake.getTime() - d.cbtMin.getTime()) / 3.6e6
-      return Math.abs(gapH - PARAMS.cbtMinBeforeWakeHours) > 0.25
-    })
-    expect(offAxis.length).toBeGreaterThan(0)
   })
 })
 
@@ -766,21 +753,36 @@ describe('plan: post-arrival local anchoring', () => {
       .days.filter((d) => d.bed.getTime() >= trip.arriveUtc.getTime())
       .map((d) => DateTime.fromJSDate(d.bed, { zone: trip.destinationZone }).hour)
 
-  it('eases a delaying traveler in early: bed 2h before local norm, then 1h, then settled', () => {
-    // Habitual bed 23:00; a delayer is exhausted early, so 21:00, 22:00, and
-    // the plan ends on the settled 23:00 night.
-    expect(destBedHours(toBeijing)).toEqual([21, 22, 23])
+  it('moves a delaying traveler 2h a night, landing on the local bedtime', () => {
+    // Habitual bed 23:00; destination nights step at the full delay rate and
+    // the last one lands exactly on local time.
+    expect(destBedHours(toBeijing)).toEqual([19, 21, 23])
   })
 
-  it('eases an advancing traveler in late: bed 2h after local norm, then 1h, then settled', () => {
-    // An advancer cannot fall asleep yet, so 01:00, 00:00, then 23:00 nights.
-    expect(destBedHours(fromBeijing).slice(0, 3)).toEqual([1, 0, 23])
+  it('moves an advancing traveler 1.5h a night, landing on the local bedtime', () => {
+    const beds = plan(fromBeijing)
+      .days.filter((d) => d.bed.getTime() >= fromBeijing.arriveUtc.getTime())
+      .map((d) => DateTime.fromJSDate(d.bed, { zone: fromBeijing.destinationZone }))
+      .map((dt) => dt.hour + dt.minute / 60)
+    expect(beds.at(-1)).toBeCloseTo(23, 6)
+    for (let i = 1; i < beds.length; i++) {
+      const stepH = ((beds[i] - beds[i - 1] + 36) % 24) - 12
+      expect(Math.abs(stepH)).toBeLessThanOrEqual(PARAMS.advanceHoursPerDay + 1e-9)
+    }
   })
 
-  it('anchors every destination night to the local clock, never the body clock', () => {
-    // Under the old body-schedule model the delayer's Beijing bedtimes walked
-    // through the afternoon. Now they stay within the easing band of 23:00.
-    for (const h of destBedHours(toBeijing)) expect([21, 22, 23]).toContain(h)
+  it('never moves a night further than the day rate allows', () => {
+    for (const trip of [toBeijing, fromBeijing]) {
+      const p = plan(trip)
+      const rate =
+        p.direction === 'advance' ? PARAMS.advanceHoursPerDay : PARAMS.delayHoursPerDay
+      for (let i = 1; i < p.days.length; i++) {
+        const moved = Math.abs(
+          (p.days[i].bed.getTime() - p.days[i - 1].bed.getTime()) / 3.6e6 - 24,
+        )
+        expect(moved).toBeLessThanOrEqual(rate + 1e-9)
+      }
+    }
   })
 
   it('keeps CBTmin stepping at the physiological rate underneath local sleep', () => {
@@ -804,28 +806,20 @@ describe('plan: post-arrival local anchoring', () => {
     }
   })
 
-  it('splits the advancing morning around a lagging CBTmin', () => {
-    // Needs a very large advance: the lag must exceed the Tmin-before-wake
-    // offset plus the easing even after the travel night's full-rate step,
-    // so force the 12h advance variant of a Rome-Honolulu hop.
-    const p = plan({
-      ...toBeijing,
-      originZone: 'Europe/Rome',
-      destinationZone: 'Pacific/Honolulu',
-      strategy: 'advance',
-    })
-    const splitDay = p.days.find(
-      (d) =>
-        d.wake.getTime() >= toBeijing.arriveUtc.getTime() &&
-        d.cbtMin.getTime() > d.wake.getTime(),
-    )
-    expect(splitDay).toBeDefined()
-    const avoid = splitDay!.advice.find((a) => a.kind === 'avoid-light')!
-    const seek = splitDay!.advice.find((a) => a.kind === 'seek-light')!
-    // Dim from wake until CBTmin passes, bright light after it.
-    expect(avoid.start.getTime()).toBe(splitDay!.wake.getTime())
-    expect(avoid.end.getTime()).toBeLessThanOrEqual(splitDay!.cbtMin.getTime())
-    expect(seek.start.getTime()).toBe(splitDay!.cbtMin.getTime())
+  it('always wakes the traveler just after CBTmin, so morning light is exact', () => {
+    // Sleep tracks CBTmin throughout, so an advancing traveler never wakes
+    // while their clock still reads night -- the morning needs no split.
+    for (const trip of [toBeijing, fromBeijing]) {
+      for (const d of plan(trip).days) {
+        expect(d.cbtMin.getTime()).toBeLessThan(d.wake.getTime())
+      }
+    }
+    const advancing = plan(fromBeijing)
+    for (const d of advancing.days) {
+      const avoid = d.advice.filter((a) => a.kind === 'avoid-light')
+      // Advances dim the evening, never the early morning.
+      for (const a of avoid) expect(a.end.getTime()).toBeLessThanOrEqual(d.bed.getTime())
+    }
   })
 
   it('never schedules seek-light inside the sleep window', () => {

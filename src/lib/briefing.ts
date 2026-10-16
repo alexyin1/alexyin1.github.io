@@ -117,9 +117,9 @@ export function briefing(plan: Plan): Briefing {
     roughDays > 0
       ? `Prepare for about ${plural(roughDays, 'day')} of jet lag discomfort — people tend ` +
         `to experience jet lag when the internal clock differs by two or more ` +
-        `time zones. The first couple of nights at the destination are ` +
-        `deliberately up to ${PARAMS.arrivalEaseHours} hours off the local norm, ` +
-        `easing onto local time.`
+        `time zones. Your sleep times move with your body clock, so the first ` +
+        `nights at the destination sit off the local norm and settle onto it as ` +
+        `the shift completes.`
       : `Your clock arrives nearly aligned, so expect little jet lag discomfort — ` +
         `it typically takes a shift of two or more time zones to notice.`,
   )

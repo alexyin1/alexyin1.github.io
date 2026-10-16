@@ -74,15 +74,6 @@ export const PARAMS = {
    * arrival, where destination light and social cues help.
    */
   maxPreTravelShiftHours: 3,
-  /**
-   * After arrival, recommended sleep snaps to the habitual schedule in local
-   * time rather than tracking the body clock: sleep timing is behavior and
-   * can jump, even though circadian phase cannot. The first nights are eased
-   * in, offset toward the body clock by up to this many hours, shrinking by
-   * an hour a night (2h, 1h, 0 -- settled by the third night). The snap to
-   * local time follows E&B's post-arrival framing; the easing amount is OURS.
-   */
-  arrivalEaseHours: 2,
   /** Don't produce schedules longer than this many days. */
   maxPlanDays: 16,
 }
@@ -393,25 +384,9 @@ export function plan(trip: Trip): Plan {
     step: number
   }
 
-  /**
-   * Tonight's bedtime anchored to the destination's wall clock: the habitual
-   * bed time in destination-local terms, offset by `easeHours` toward the
-   * body clock, on the first such instant after `after`.
-   */
-  const anchoredBed = (after: DateTime, easeHours: number): DateTime => {
-    let candidate = after
-      .setZone(trip.destinationZone)
-      .startOf('day')
-      .set({ hour: bed.hour, minute: bed.minute, second: 0, millisecond: 0 })
-      .plus(hours(easeHours))
-    while (candidate <= after) candidate = candidate.plus({ days: 1 })
-    return candidate
-  }
-
   const frames: Frame[] = []
   let remaining = shiftHours
   let preTravelShiftUsed = 0
-  let anchoredNights = 0
   let completedOnDay = -1
   // Wake is carried separately from CBTmin: they track each other before the
   // flight, but decouple once sleep snaps to destination time.
@@ -420,11 +395,7 @@ export function plan(trip: Trip): Plan {
   for (let i = 0; i < PARAMS.maxPlanDays; i++) {
     const wakeAt = wakeCursor
     const landed = wakeAt.toJSDate() >= trip.arriveUtc
-    const estimatedBed = wakeAt.plus(hours(24 - sleepHours))
-    // Tonight is spent at the destination if a body-schedule bedtime estimate
-    // falls after arrival -- that is what lets sleep anchor to local time.
-    const nightAtDestination = estimatedBed.toJSDate() >= trip.arriveUtc
-    // But the *rate* switches at departure, not arrival: the gentle pre-travel
+    // The *rate* switches at departure, not arrival: the gentle pre-travel
     // pace and its cap exist because the traveler is still living on home
     // time around work and family. From the travel night onward (including a
     // night slept mid-flight on a red-eye), the full E&B rate applies. A
@@ -453,27 +424,13 @@ export function plan(trip: Trip): Plan {
     const nextCbt = cbt.plus({ days: 1 }).minus(hours(step))
     const remainingAfter = remaining - step
 
-    let bedAt: DateTime
-    let nextWake: DateTime
-    if (nightAtDestination) {
-      // Local-anchored night: habitual destination bedtime, offset toward the
-      // body clock by an allowance that shrinks an hour a night (2h, 1h, 0).
-      // The offset is signed like the shift: an advancing traveler gets a
-      // *later* first bedtime, a delaying one an *earlier* crash.
-      const ease =
-        Math.sign(remainingAfter) *
-        Math.min(Math.abs(remainingAfter), Math.max(0, PARAMS.arrivalEaseHours - anchoredNights))
-      bedAt = anchoredBed(wakeAt, ease)
-      // A late-evening arrival can put the eased bedtime before the plane is
-      // on the ground; you sleep when you land, not mid-descent.
-      if (bedAt.toJSDate() < trip.arriveUtc) bedAt = arrive.setZone(trip.destinationZone)
-      nextWake = bedAt.plus(hours(sleepHours))
-      anchoredNights += 1
-    } else {
-      // Body-schedule night: sleep tracks the shifting CBTmin.
-      nextWake = nextCbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
-      bedAt = nextWake.minus(hours(sleepHours))
-    }
+    // Sleep tracks CBTmin for the whole plan, before and after arrival. That
+    // keeps the schedule moving at exactly the day's shift rate -- no night
+    // jumps further than the rate allows, none stalls -- and because CBTmin
+    // finishes on the destination-aligned target, the final night lands on
+    // the habitual local bedtime by construction rather than by snapping.
+    const nextWake = nextCbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
+    const bedAt = nextWake.minus(hours(sleepHours))
 
     frames.push({
       cbt,
@@ -562,36 +519,20 @@ export function plan(trip: Trip): Plan {
     // say what to do and when. Sources per recommendation are in SCIENCE.md.
     if (stillShifting && direction === 'advance') {
       // Light after CBTmin advances; light before it delays (Khalsa 2003 PRC,
-      // as operationalized by E&B). Pre-arrival, sleep tracks CBTmin so
-      // waking is just-after-CBTmin and E&B's light-on-waking rule is exact.
-      // Post-arrival, sleep is on local time while CBTmin lags behind it, so
-      // the morning splits in two around CBTmin.
-      const cbtAt = frames[i].cbt
-      if (landed && cbtAt > wakeAt) {
-        // The traveler wakes while their clock still reads night: early light
-        // would push the wrong way until CBTmin passes.
-        const morningCap = wakeAt.plus(hours(4))
-        add(
-          'avoid-light',
-          wakeAt,
-          cbtAt < morningCap ? cbtAt : morningCap,
-          'Keep the early morning dim — your clock still reads it as night.',
-        )
-        add('seek-light', cbtAt, cbtAt.plus(hours(3)), 'Bright light from here pulls your clock earlier.')
-        add('exercise', cbtAt, cbtAt.plus(hours(2)), 'Exercise with the light.')
-      } else {
-        // E&B pre-flight advance: bright light the first 3-4h after waking.
-        // Morning exercise also advances (Youngstedt 2019 exercise PRC).
-        add(
-          'seek-light',
-          wakeAt,
-          wakeAt.plus(hours(3)),
-          landed
-            ? 'Seek light as soon as you wake — open the blinds or take a morning walk.'
-            : 'Bright light on waking, outdoors if you can.',
-        )
-        add('exercise', wakeAt, wakeAt.plus(hours(2)), 'Morning exercise.')
-      }
+      // as operationalized by E&B). Sleep tracks CBTmin throughout, so waking
+      // is always just-after-CBTmin and E&B's light-on-waking rule is exact.
+      //
+      // E&B pre-flight advance: bright light the first 3-4h after waking.
+      // Morning exercise also advances (Youngstedt 2019 exercise PRC).
+      add(
+        'seek-light',
+        wakeAt,
+        wakeAt.plus(hours(3)),
+        landed
+          ? 'Seek light as soon as you wake — open the blinds or take a morning walk.'
+          : 'Bright light on waking, outdoors if you can.',
+      )
+      add('exercise', wakeAt, wakeAt.plus(hours(2)), 'Morning exercise.')
       // Evening light falls before tomorrow's CBTmin and would undo the advance.
       add('avoid-light', bedAt.minus(hours(4)), bedAt, 'Keep the evening dim.')
       if (trip.usesMelatonin !== false) {

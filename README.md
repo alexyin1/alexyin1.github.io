@@ -64,12 +64,11 @@ The sign conventions that matter:
 - Before arrival the traveler is still on home time, so shifting is capped at
   1h/day and 3h in total; the remainder waits until landing, where local
   daylight and meal times help.
-- Sleep timing and circadian phase are different things, and only phase is
-  rate-limited. Pre-flight, sleep tracks CBTmin (shifting the schedule *is*
-  the mechanism). Post-arrival, recommended sleep snaps to the habitual
-  schedule in destination time — eased in by up to 2h over the first nights —
-  while CBTmin keeps moving at its physiological rate underneath and light
-  windows, keyed to CBTmin, do the circadian work.
+- Sleep tracks CBTmin for the whole plan, so the recommended schedule moves
+  at exactly the day's shift rate and lands on the habitual local bedtime
+  when CBTmin reaches its destination-aligned target.
+- Shift rates switch at *departure*, not arrival: the gentle 1h/day pace and
+  its 3h cap apply only to nights genuinely spent at home.
 
 Tunable parameters live in `PARAMS` at the top of `circadian.ts`.
 
