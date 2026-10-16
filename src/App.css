@@ -139,6 +139,17 @@ li {
 .adapted-note.closing { margin-top: 1.5rem; }
 
 .strategy-choice { margin: 0.75rem 0 0.25rem; }
+.trip-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin: 0.75rem 0 0.25rem;
+}
+.trip-form .field { display: flex; flex-direction: column; }
+.trip-form label { font-size: 0.85rem; color: #777; margin-bottom: 0.2rem; }
+.trip-form input { font: inherit; padding: 0.25rem 0.4rem; }
+.flight-note { margin: 0.35rem 0 0; font-size: 0.85rem; color: #777; }
+.form-error { margin: 0.35rem 0 0; color: #b4232a; }
 .zones-off { margin: 0.75rem 0 0.25rem; }
 .zones-off label { display: block; margin-bottom: 0.25rem; }
 .zones-off input[type='range'] { width: min(16rem, 100%); }

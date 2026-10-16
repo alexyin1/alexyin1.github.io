@@ -11,6 +11,7 @@ import {
   type Trip,
 } from './lib/circadian'
 import { NO_PLAN_MESSAGE, briefing, needsPlan } from './lib/briefing'
+import { resolveFlight } from './lib/flight'
 import { KIND_EMOJI } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
@@ -23,15 +24,17 @@ import {
 } from './lib/airports'
 import './App.css'
 
-// Flight times are still fixed demo values; the full trip form (dates and
-// habitual sleep) is the next step. Origin and destination are live.
-const DEMO_TIMES = {
-  departUtc: new Date('2026-06-01T20:00:00Z'),
-  arriveUtc: new Date('2026-06-02T08:30:00Z'),
+// Initial form values: the LAX -> Beijing demo itinerary (depart 13:00
+// Pacific, land 16:30 China time the next day -- the rollover is derived).
+const FORM_DEFAULTS = {
   habitualBedLocal: '23:00',
   habitualWakeLocal: '07:00',
+  travelDate: '2026-06-01',
+  departTimeLocal: '13:00',
+  arriveTimeLocal: '16:30',
   preTravelDays: 3,
 }
+
 
 // Defaults so the page renders before the airport dataset chunk loads.
 // Beijing has no separate IANA zone -- all of China uses Asia/Shanghai.
@@ -136,20 +139,42 @@ export default function App() {
   // pre-flight shift cap and the post-departure snap toward local time.
   const [zonesOff, setZonesOff] = useState<number>(PARAMS.zonesOffRegular)
 
-  const baseTrip: Trip = {
-    ...DEMO_TIMES,
-    originZone: origin.tz,
-    destinationZone: destination.tz,
-    originLabel: origin.city || origin.name,
-    destinationLabel: destination.city || destination.name,
-    zonesOffRegular: zonesOff,
-  }
+  // Trip form state. Times are 'HH:mm', the travel date 'yyyy-MM-dd'.
+  const [habitualBed, setHabitualBed] = useState(FORM_DEFAULTS.habitualBedLocal)
+  const [habitualWake, setHabitualWake] = useState(FORM_DEFAULTS.habitualWakeLocal)
+  const [travelDate, setTravelDate] = useState(FORM_DEFAULTS.travelDate)
+  const [departTime, setDepartTime] = useState(FORM_DEFAULTS.departTimeLocal)
+  const [arriveTime, setArriveTime] = useState(FORM_DEFAULTS.arriveTimeLocal)
+
+  const flight = resolveFlight(travelDate, departTime, origin.tz, arriveTime, destination.tz)
+  const flightError = 'error' in flight ? flight.error : null
+  const sleepError =
+    !habitualBed || !habitualWake ? 'Enter your usual bedtime and wake time.' : null
+  const formError = sleepError ?? flightError
+
+  const baseTrip: Trip | null =
+    'error' in flight || sleepError
+      ? null
+      : {
+          originZone: origin.tz,
+          destinationZone: destination.tz,
+          originLabel: origin.city || origin.name,
+          destinationLabel: destination.city || destination.name,
+          departUtc: flight.departUtc,
+          arriveUtc: flight.arriveUtc,
+          habitualBedLocal: habitualBed,
+          habitualWakeLocal: habitualWake,
+          preTravelDays: FORM_DEFAULTS.preTravelDays,
+          zonesOffRegular: zonesOff,
+        }
   // 8-12h eastward is the genuine judgment call: advance (shorter) or delay
   // (gentler). Default to delay per the chronotype rule of thumb; the toggle
   // lets early birds take the advance.
-  const choice = strategyChoice(baseTrip)
+  const choice = baseTrip ? strategyChoice(baseTrip) : null
   const [strategyPick, setStrategyPick] = useState<'delay' | 'advance'>('delay')
-  const trip: Trip = { ...baseTrip, strategy: choice ? strategyPick : 'auto' }
+  const trip: Trip | null = baseTrip
+    ? { ...baseTrip, strategy: choice ? strategyPick : 'auto' }
+    : null
   // Whole days are the only meaningful states; fractional positions exist
   // only to smooth the eye between them. So the chart always rests on an
   // integer `targetDay`, and `pos` is the animated position easing there.
@@ -158,8 +183,8 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const posRef = useRef(0)
   posRef.current = pos
-  const result = plan(trip)
-  const dayCount = result.days.length
+  const result = trip ? plan(trip) : null
+  const dayCount = result ? result.days.length : 0
   // Chart positions run 0..dayCount: position 0 is the baseline day 0, and
   // position k is plan day k (the itinerary's "Day k").
   const visDay = Math.min(dayCount, Math.round(pos))
@@ -216,12 +241,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetDay, playing])
 
-  const brief = briefing(result)
-  const planNeeded = needsPlan(result)
+  const brief = result ? briefing(result) : null
+  const planNeeded = result ? needsPlan(result) : false
   // The baseline "day 0" is the calendar day before the plan starts.
-  const baselineDate = DateTime.fromISO(result.days[0].date)
-    .minus({ days: 1 })
-    .toFormat('yyyy-MM-dd')
+  const baselineDate = result
+    ? DateTime.fromISO(result.days[0].date).minus({ days: 1 }).toFormat('yyyy-MM-dd')
+    : ''
 
   return (
     <main>
@@ -248,9 +273,53 @@ export default function App() {
         <AirportInput id="destination" label="To" airports={airports}
           selected={destination} onSelect={setDestination} />
       </div>
-      <p className="route">
-        <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
-      </p>
+
+      <div className="trip-form">
+        <div className="field">
+          <label htmlFor="traveldate">Travel day</label>
+          <input id="traveldate" type="date" value={travelDate}
+            onChange={(e) => setTravelDate(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="departtime">Departure ({origin.iata} local)</label>
+          <input id="departtime" type="time" value={departTime}
+            onChange={(e) => setDepartTime(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="arrivetime">Arrival ({destination.iata} local)</label>
+          <input id="arrivetime" type="time" value={arriveTime}
+            onChange={(e) => setArriveTime(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="bedtime">Usual bedtime</label>
+          <input id="bedtime" type="time" value={habitualBed}
+            onChange={(e) => setHabitualBed(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="waketime">Usual wake time</label>
+          <input id="waketime" type="time" value={habitualWake}
+            onChange={(e) => setHabitualWake(e.target.value)} />
+        </div>
+      </div>
+      {!formError && !('error' in flight) && (
+        <p className="flight-note">
+          Lands {flight.arriveLocal.toFormat('EEE yyyy-MM-dd')} at{' '}
+          {formatTime(flight.arriveUtc, destination.tz, clock)} {destination.iata} time
+          {flight.arriveLocal.toISODate()! > travelDate
+            ? ' — the day after departure'
+            : flight.arriveLocal.toISODate()! < travelDate
+              ? ' — the day before departure (you cross the date line)'
+              : ''}
+          .
+        </p>
+      )}
+      {formError && <p className="form-error">{formError}</p>}
+
+      {result && (
+        <p className="route">
+          <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
+        </p>
+      )}
 
       <div className="zones-off">
         <label htmlFor="zonesoff">
@@ -302,9 +371,9 @@ export default function App() {
         </div>
       )}
 
-      {!planNeeded && <p className="no-plan">{NO_PLAN_MESSAGE}</p>}
+      {result && !planNeeded && <p className="no-plan">{NO_PLAN_MESSAGE}</p>}
 
-      {planNeeded && (
+      {result && brief && planNeeded && (
       <>
       <section className="briefing">
         <h2 className={`direction ${result.travelDirection}`}>{brief.headline}</h2>
@@ -386,10 +455,10 @@ export default function App() {
         plan={result}
         pos={pos}
         clock={clock}
-        originZone={trip.originZone}
-        destinationZone={trip.destinationZone}
-        habitualBedLocal={trip.habitualBedLocal}
-        habitualWakeLocal={trip.habitualWakeLocal}
+        originZone={origin.tz}
+        destinationZone={destination.tz}
+        habitualBedLocal={habitualBed}
+        habitualWakeLocal={habitualWake}
         originCoords={origin}
         destinationCoords={destination}
       />
