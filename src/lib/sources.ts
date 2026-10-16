@@ -22,6 +22,14 @@ export const SOURCES: Source[] = [
       'The core protocol: CBTmin-anchored light timing, pre-flight 1h/day sleep shifting, ~1h/day advance and ~1.5h/day delay rates (their worked-example rates; they quote 1.5/2 as upper bounds), 0.5 mg melatonin ~5h before bedtime for advances only.',
   },
   {
+    id: 'roach-sargent-2019',
+    citation:
+      'Roach GD, Sargent C (2019). Interventions to Minimize Jet Lag After Westward and Eastward Flight. Front Physiol 10:927.',
+    url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC6684967/',
+    basis:
+      'Post-flight sleep strategy: sleep on the destination schedule rather than easing it over gradually. We use a capped version — bedtime snaps to local time but never further than a configurable few hours from the habitual bedtime, then CBTmin catches up.',
+  },
+  {
     id: 'youngstedt-2019',
     citation:
       'Youngstedt SD, Elliott JA, Kripke DF (2019). Human circadian phase–response curves for exercise. J Physiol 597(8):2253–2268.',

@@ -12,15 +12,19 @@
  * Days are oriented the way a person lives them: each PlanDay starts at wake
  * and ends with falling asleep, so its sleep window trails off the end and
  * crosses local midnight. Each day therefore contains exactly one CBTmin,
- * `nextCbtMin`, sitting inside that trailing sleep.
+ * `nextCbtMin`, normally sitting inside that trailing sleep (while the
+ * post-arrival schedule is snapped off the body clock it can sit just
+ * outside it).
  *
  * Sleep timing and circadian phase are different things, and only phase is
  * rate-limited. Before the flight, shifting the sleep schedule *is* the
- * mechanism, so sleep tracks CBTmin. After arrival, sleep is behavior: it
- * snaps to the habitual schedule in destination time (eased in over the first
- * couple of nights), while CBTmin keeps moving at its physiological rate
- * underneath and the light windows -- now keyed to CBTmin, not to sleep -- do
- * the circadian work.
+ * mechanism, so sleep tracks CBTmin. From the travel night onward, sleep is
+ * behavior: it snaps toward the habitual schedule in destination time -- a
+ * modified "sleep on local time" after Roach & Sargent (2019) -- but never
+ * further than `zonesOffRegular` hours from the habitual bedtime. It holds
+ * there until the CBTmin-derived bedtime catches up, then follows CBTmin the
+ * rest of the way. CBTmin itself keeps moving at its physiological rate
+ * underneath, and the light windows do the circadian work.
  *
  * Sign conventions, which are the easiest thing to get backwards:
  *   - ADVANCE  = clock moves earlier = eastward travel.
@@ -72,12 +76,15 @@ export const PARAMS = {
    */
   destinationFreeShiftHours: 2,
   /**
-   * Total pre-flight shift cap. OURS, not E&B's: E&B describe 3-4 days of
-   * pre-shifting; we cap the total at 3h because moving further while holding
-   * a home work/family schedule rarely sticks. The remainder happens after
-   * arrival, where destination light and social cues help.
+   * How far from the habitual bedtime a scheduled bedtime may sit, in hours.
+   * OURS. It plays two symmetric roles: (1) total pre-flight shift cap --
+   * E&B describe 3-4 days of pre-shifting, but moving further than this while
+   * holding a home work/family schedule rarely sticks; and (2) from the
+   * travel night onward, how far off the habitual destination bedtime the
+   * snapped sleep schedule may start (see the header comment). Overridable
+   * per trip via `Trip.zonesOffRegular`.
    */
-  maxPreTravelShiftHours: 3,
+  zonesOffRegular: 3,
   /** Don't produce schedules longer than this many days. */
   maxPlanDays: 16,
 }
@@ -118,6 +125,13 @@ export interface Trip {
   /** How many days before departure the traveler is willing to start shifting. */
   preTravelDays?: number
   usesMelatonin?: boolean
+  /**
+   * Max hours a scheduled bedtime may sit from the habitual bedtime, both
+   * pre-flight (total pre-shift cap) and post-departure (how far off the
+   * habitual destination bedtime the snapped schedule starts). Defaults to
+   * PARAMS.zonesOffRegular.
+   */
+  zonesOffRegular?: number
   /** Override the automatic eastward/westward strategy choice. */
   strategy?: 'auto' | 'advance' | 'delay'
 }
@@ -303,7 +317,7 @@ export function computeShift(trip: Trip): {
   // direction, which moves the advance/delay breakeven from 9.6h to ~10.2h.
   const daysFor = (s: number) => {
     const mag = Math.abs(s)
-    const pre = Math.min(PARAMS.maxPreTravelShiftHours, mag)
+    const pre = Math.min(trip.zonesOffRegular ?? PARAMS.zonesOffRegular, mag)
     const rate = s > 0 ? PARAMS.advanceHoursPerDay : PARAMS.delayHoursPerDay
     return pre / PARAMS.preTravelHoursPerDay + (mag - pre) / rate
   }
@@ -368,6 +382,7 @@ export function plan(trip: Trip): Plan {
 
   const arrivalRate =
     direction === 'advance' ? PARAMS.advanceHoursPerDay : PARAMS.delayHoursPerDay
+  const zonesOff = Math.max(0, trip.zonesOffRegular ?? PARAMS.zonesOffRegular)
 
   const origin = makePlace(trip.originZone, trip.originLabel, trip.departUtc)
   const destination = makePlace(trip.destinationZone, trip.destinationLabel, trip.arriveUtc)
@@ -412,7 +427,7 @@ export function plan(trip: Trip): Plan {
       ? arrivalRate
       : Math.min(
           PARAMS.preTravelHoursPerDay,
-          Math.max(0, PARAMS.maxPreTravelShiftHours - preTravelShiftUsed),
+          Math.max(0, zonesOff - preTravelShiftUsed),
         )
     const magnitude = Math.min(allowance, Math.abs(remaining))
     const step = Math.sign(remaining) * magnitude
@@ -428,13 +443,39 @@ export function plan(trip: Trip): Plan {
     const nextCbt = cbt.plus({ days: 1 }).minus(hours(step))
     const remainingAfter = remaining - step
 
-    // Sleep tracks CBTmin for the whole plan, before and after arrival. That
-    // keeps the schedule moving at exactly the day's shift rate -- no night
-    // jumps further than the rate allows, none stalls -- and because CBTmin
-    // finishes on the destination-aligned target, the final night lands on
-    // the habitual local bedtime by construction rather than by snapping.
-    const nextWake = nextCbt.plus(hours(PARAMS.cbtMinBeforeWakeHours))
-    const bedAt = nextWake.minus(hours(sleepHours))
+    // Bedtime. Before the flight, sleep tracks CBTmin: shifting the schedule
+    // is the mechanism, so no night moves faster than the day's shift rate.
+    // From the travel night onward we switch to a capped snap-to-local
+    // (modified Roach & Sargent): bedtime jumps straight to the habitual
+    // destination bedtime offset `zonesOff` hours toward the body clock
+    // (later for an advance, earlier for a delay), holds there while the
+    // CBTmin-derived bedtime converges, then follows CBTmin the rest of the
+    // way home. The min/max below expresses both phases at once: early on
+    // the snap target is the closer-to-local bound, and once CBTmin's
+    // bedtime passes it, CBTmin wins every night through the final one,
+    // which lands on the habitual local bedtime by construction.
+    const cbtBed = nextCbt
+      .plus(hours(PARAMS.cbtMinBeforeWakeHours))
+      .minus(hours(sleepHours))
+    let bedAt = cbtBed
+    // The snap starts with the first night that begins after wheels-up: a
+    // night that straddles an early-morning departure is still slept at home
+    // on home cues, so it shifts at the full rate but is not snapped.
+    if (nightAfterDeparture && direction !== 'none' && cbtBed.toJSDate() >= trip.departUtc) {
+      const local = cbtBed.setZone(trip.destinationZone)
+      let snap = local
+        .set({ hour: bed.hour, minute: bed.minute, second: 0, millisecond: 0 })
+        .plus(hours(direction === 'advance' ? zonesOff : -zonesOff))
+      // Pick the representative of that destination-local time nearest the
+      // CBTmin bedtime, so the comparison is between the same night.
+      const gap = snap.diff(local).as('hours')
+      if (gap > 12) snap = snap.minus({ days: 1 })
+      else if (gap < -12) snap = snap.plus({ days: 1 })
+      bedAt = direction === 'advance'
+        ? (snap < cbtBed ? snap : cbtBed) // advance: earlier wins
+        : (snap > cbtBed ? snap : cbtBed) // delay: later wins
+    }
+    const nextWake = bedAt.plus(hours(sleepHours))
 
     frames.push({
       cbt,

@@ -278,7 +278,7 @@ describe('plan: pre-travel vs post-arrival rates', () => {
   it('caps total pre-travel shifting even with a long run-up', () => {
     // 7 days of run-up would be 7h at 1h/day, but the cap is 3h.
     const p = plan({ ...westward, preTravelDays: 7 })
-    expect(p.preTravelShiftHours).toBeCloseTo(PARAMS.maxPreTravelShiftHours, 6)
+    expect(p.preTravelShiftHours).toBeCloseTo(PARAMS.zonesOffRegular, 6)
   })
 
   it('uses the faster delay rate only after arrival', () => {
@@ -293,7 +293,7 @@ describe('plan: pre-travel vs post-arrival rates', () => {
 
   it('reports how much of the shift lands before departure', () => {
     expect(plan({ ...westward, preTravelDays: 0 }).preTravelShiftHours).toBeLessThanOrEqual(
-      PARAMS.maxPreTravelShiftHours,
+      PARAMS.zonesOffRegular,
     )
     expect(plan({ ...westward, preTravelDays: 3 }).preTravelShiftHours).toBeGreaterThan(0)
     // A tiny shift needs no pre-travel days at all: the travel night, at the
@@ -536,17 +536,30 @@ describe('plan: day orientation', () => {
     expect(firstOfKind(lateNight!.advice, 'sleep').start.getTime()).toBe(lateNight!.bed.getTime())
   })
 
-  it('keeps sleep coupled to CBTmin for the whole plan', () => {
+  it('couples sleep to CBTmin before departure, snaps toward local time after', () => {
     const p = plan(westward)
-    // Wake tracks CBTmin at the fixed physiological offset on every day,
-    // before and after arrival -- which is what keeps the schedule moving at
-    // the day's rate instead of snapping on arrival.
+    // Wake tracks CBTmin at the fixed physiological offset on days still
+    // woken by a pre-flight night: shifting the schedule is the mechanism.
     for (const day of p.days) {
       expect(day.cbtMin.getTime()).toBeLessThan(day.wake.getTime())
-      expect((day.wake.getTime() - day.cbtMin.getTime()) / 3.6e6).toBeCloseTo(
-        PARAMS.cbtMinBeforeWakeHours,
-        6,
-      )
+      if (day.wake.getTime() <= westward.departUtc.getTime()) {
+        expect((day.wake.getTime() - day.cbtMin.getTime()) / 3.6e6).toBeCloseTo(
+          PARAMS.cbtMinBeforeWakeHours,
+          6,
+        )
+      }
+    }
+    // From the travel night on, bedtime sits between the CBTmin-derived
+    // bedtime and the habitual destination bedtime, never more than
+    // zonesOffRegular hours off the latter (modified Roach & Sargent).
+    const post = p.days.filter((d) => d.bed.getTime() > westward.departUtc.getTime())
+    expect(post.length).toBeGreaterThan(0)
+    for (const d of post) {
+      const local = DateTime.fromJSDate(d.bed, { zone: westward.destinationZone })
+      const h = local.hour + local.minute / 60
+      const off = ((h - 23 + 36) % 24) - 12 // signed hours from the habitual 23:00
+      expect(off).toBeGreaterThanOrEqual(-PARAMS.zonesOffRegular - 1e-9) // delay: earlier side
+      expect(off).toBeLessThanOrEqual(1e-9)
     }
   })
 })
@@ -765,36 +778,49 @@ describe('plan: post-arrival local anchoring', () => {
         return dt.hour + dt.minute / 60
       })
 
-  it('moves a delaying traveler 1.5h a night, landing on the local bedtime', () => {
-    // Habitual bed 23:00; destination nights step at the full delay rate and
-    // the last one lands exactly on local time: 18:30, 20:00, 21:30, 23:00.
-    expect(destBedHours(toBeijing)).toEqual([18.5, 20, 21.5, 23])
+  it('snaps a delaying traveler to 3h before local bedtime, holds, then eases in', () => {
+    // Habitual bed 23:00; from the travel night bedtime snaps straight to
+    // 20:00 Beijing (habitual minus zonesOffRegular) and holds there until
+    // the CBTmin-derived bedtime catches up, then follows it: 20, 20, 21.5, 23.
+    expect(destBedHours(toBeijing)).toEqual([20, 20, 21.5, 23])
   })
 
-  it('moves an advancing traveler 1h a night, landing on the local bedtime', () => {
-    const beds = plan(fromBeijing)
-      .days.filter((d) => d.bed.getTime() >= fromBeijing.arriveUtc.getTime())
-      .map((d) => DateTime.fromJSDate(d.bed, { zone: fromBeijing.destinationZone }))
-      .map((dt) => dt.hour + dt.minute / 60)
-    expect(beds.at(-1)).toBeCloseTo(23, 6)
-    for (let i = 1; i < beds.length; i++) {
-      const stepH = ((beds[i] - beds[i - 1] + 36) % 24) - 12
-      expect(Math.abs(stepH)).toBeLessThanOrEqual(PARAMS.advanceHoursPerDay + 1e-9)
-    }
+  it('snaps an advancing traveler to 3h past local bedtime, holds, then eases in', () => {
+    // Mirror image: bedtime snaps to 02:00 LA (habitual 23:00 plus
+    // zonesOffRegular), holds while CBTmin converges, then tracks it down.
+    expect(destBedHours(fromBeijing)).toEqual([2, 2, 2, 1, 0, 23])
   })
 
-  it('never moves a night further than the day rate allows', () => {
+  it('after the snap night, no night moves further than the day rate allows', () => {
     for (const trip of [toBeijing, fromBeijing]) {
       const p = plan(trip)
       const rate =
         p.direction === 'advance' ? PARAMS.advanceHoursPerDay : PARAMS.delayHoursPerDay
+      const snapIndex = p.days.findIndex((d) => d.transit)
       for (let i = 1; i < p.days.length; i++) {
+        if (i === snapIndex) continue // the snap night itself may jump
         const moved = Math.abs(
           (p.days[i].bed.getTime() - p.days[i - 1].bed.getTime()) / 3.6e6 - 24,
         )
         expect(moved).toBeLessThanOrEqual(rate + 1e-9)
       }
     }
+  })
+
+  it('honours a custom zonesOffRegular', () => {
+    // With a 2h tolerance the pre-travel cap is 2h and the snap target is
+    // 21:00 Beijing: every post-departure bedtime stays within 2h of the
+    // habitual local bedtime, and the last one lands on 23:00.
+    const p = plan({ ...toBeijing, zonesOffRegular: 2 })
+    expect(p.preTravelShiftHours).toBeCloseTo(2, 6)
+    const beds = p.days
+      .filter((d) => d.bed.getTime() >= toBeijing.arriveUtc.getTime())
+      .map((d) => {
+        const dt = DateTime.fromJSDate(d.bed, { zone: toBeijing.destinationZone })
+        return dt.hour + dt.minute / 60
+      })
+    for (const h of beds) expect(h).toBeGreaterThanOrEqual(21 - 1e-9)
+    expect(beds.at(-1)).toBeCloseTo(23, 6)
   })
 
   it('keeps CBTmin stepping at the physiological rate underneath local sleep', () => {

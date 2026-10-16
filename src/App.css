@@ -139,6 +139,9 @@ li {
 .adapted-note.closing { margin-top: 1.5rem; }
 
 .strategy-choice { margin: 0.75rem 0 0.25rem; }
+.zones-off { margin: 0.75rem 0 0.25rem; }
+.zones-off label { display: block; margin-bottom: 0.25rem; }
+.zones-off input[type='range'] { width: min(16rem, 100%); }
 .strategy-label { font-size: 0.9rem; font-weight: 600; color: #555; margin-right: 0.6rem; }
 .strategy-choice .clock-toggle { display: inline-flex; vertical-align: middle; }
 .strategy-tip { margin: 0.35rem 0 0; font-size: 0.85rem; color: #777; }

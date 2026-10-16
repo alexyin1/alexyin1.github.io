@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { DateTime } from 'luxon'
 import {
+  PARAMS,
   plan,
   formatTime,
   formatWindow,
@@ -131,12 +132,17 @@ export default function App() {
     }
   }, [])
 
+  // How far off the regular bedtime the plan may schedule sleep, both for the
+  // pre-flight shift cap and the post-departure snap toward local time.
+  const [zonesOff, setZonesOff] = useState<number>(PARAMS.zonesOffRegular)
+
   const baseTrip: Trip = {
     ...DEMO_TIMES,
     originZone: origin.tz,
     destinationZone: destination.tz,
     originLabel: origin.city || origin.name,
     destinationLabel: destination.city || destination.name,
+    zonesOffRegular: zonesOff,
   }
   // 8-12h eastward is the genuine judgment call: advance (shorter) or delay
   // (gentler). Default to delay per the chronotype rule of thumb; the toggle
@@ -245,6 +251,26 @@ export default function App() {
       <p className="route">
         <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
       </p>
+
+      <div className="zones-off">
+        <label htmlFor="zonesoff">
+          Max hours off your regular bedtime: <strong>{zonesOff}h</strong>
+        </label>
+        <input
+          id="zonesoff"
+          type="range"
+          min={1}
+          max={5}
+          step={0.5}
+          value={zonesOff}
+          onChange={(e) => setZonesOff(Number(e.target.value))}
+        />
+        <p className="strategy-tip">
+          Caps how far the plan shifts your bedtime while you are still at home,
+          and how far off the regular local bedtime your first destination
+          nights start before easing onto it. Most people manage about 3 hours.
+        </p>
+      </div>
 
       {choice && (
         <div className="strategy-choice">
@@ -421,7 +447,9 @@ export default function App() {
 
       <footer>
         <p>
-          Recommendations follow the published protocol of Eastman &amp; Burgess, with
+          Light and melatonin recommendations follow the published protocol of
+          Eastman &amp; Burgess; post-flight sleep scheduling follows a capped
+          version of Roach &amp; Sargent&apos;s sleep-on-local-time strategy, with
           exercise and meal timing from the sources below. Educational tool — not
           medical advice.
         </p>
