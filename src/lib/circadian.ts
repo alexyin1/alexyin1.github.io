@@ -491,12 +491,21 @@ export function plan(trip: Trip): Plan {
   const daysNeeded = frames.filter((f) => f.step !== 0).length
   const preTravelShiftHours = preTravelShiftUsed
   // Run until the night the shift completes -- no trailing settled day, the
-  // itinerary ends when the work does -- but always cover at least one full
-  // day past arrival so the traveler gets on-the-ground guidance.
-  const daysAfterArrival = Math.ceil(arrive.diff(day0, 'days').days) + 1
+  // itinerary ends when the work does -- but always cover through the first
+  // full day at the destination so the traveler gets on-the-ground guidance.
+  // That is the day after the frame containing the arrival instant; counting
+  // calendar days instead overshoots by one on overnight arrivals.
+  const arrivalDayIndex = frames.findIndex(
+    (f) => f.wake.toJSDate() <= trip.arriveUtc && trip.arriveUtc < f.nextWake.toJSDate(),
+  )
+  const coverThroughArrival = arrivalDayIndex >= 0 ? arrivalDayIndex + 2 : 1
   const totalDays = Math.min(
     PARAMS.maxPlanDays,
-    Math.max(completedOnDay < 0 ? PARAMS.maxPlanDays : completedOnDay + 1, daysAfterArrival, 1),
+    Math.max(
+      completedOnDay < 0 ? PARAMS.maxPlanDays : completedOnDay + 1,
+      coverThroughArrival,
+      1,
+    ),
   )
 
   if (completedOnDay < 0 && direction !== 'none') {

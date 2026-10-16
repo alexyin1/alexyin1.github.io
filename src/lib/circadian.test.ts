@@ -336,6 +336,26 @@ describe('plan: pre-travel days only when needed', () => {
   it('still uses the full run-up for large shifts', () => {
     expect(plan(eastward).preTravelShiftHours).toBeCloseTo(3, 6)
   })
+
+  it('does not pad an overnight arrival with a redundant settled day', () => {
+    // LAX -> JFK on a red-eye arriving 04:30 EDT: the shift completes on
+    // day 3 (the first full New York day). Counting calendar days to
+    // arrival used to force a fourth, fully-settled day.
+    const p = plan({
+      originZone: 'America/Los_Angeles',
+      destinationZone: 'America/New_York',
+      departUtc: iso('2026-06-01T20:00:00Z'),
+      arriveUtc: iso('2026-06-02T08:30:00Z'),
+      habitualBedLocal: '23:00',
+      habitualWakeLocal: '07:00',
+      preTravelDays: 3,
+    })
+    expect(p.days).toHaveLength(3)
+    expect(p.completed).toBe(true)
+    expect(p.days.at(-1)!.remainingAfterTonightHours).toBeCloseTo(0, 6)
+    // The plan still reaches the first full destination day.
+    expect(p.days.at(-1)!.place.label).toBe('New York')
+  })
 })
 
 describe('strategyChoice', () => {
