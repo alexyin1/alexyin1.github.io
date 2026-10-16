@@ -46,6 +46,8 @@ low-dose melatonin for advances.
 | CBTmin stepping as fixed hours/day | `plan()` pass 1 | Simplification. The underlying PRC is dose- and phase-dependent; E&B's planning rates approximate it, and we inherit that approximation. |
 | Plans truncated at 16 days | `PARAMS.maxPlanDays` | Practicality. |
 | Dinner ≥3h before bed | briefing tip | General sleep hygiene, not re-entrainment evidence. |
+| 8–12h eastward: traveler chooses advance vs delay, default delay | `strategyChoice()`, App toggle | Both routes round the clock are defensible in this band. Chronotype rule of thumb (night owls delay, early birds advance) is common clinical advice, not a trial result. |
+| Prefer evening departures on delays, morning on advances | briefing tip | Heuristic: airport + cabin are bright, active hours; land them in the seek-light window. Source is a [Burgess press interview](https://www.rd.com/article/best-flight-arrival-avoid-jet-lag/), not a study — the tip says so. |
 
 ## Deliberately excluded
 

@@ -125,14 +125,35 @@ export function briefing(plan: Plan): Briefing {
         `it typically takes a shift of two or more time zones to notice.`,
   )
 
-  // The strategy surprise, when it applies.
+  // The strategy surprise, when it applies. Neutral on speed: on a chosen
+  // delay this route can be the slower one -- the point is which direction
+  // the clock moves, not that it wins on days.
   if (strategyDisagrees) {
     tips.push(
-      `You are flying ${plan.travelDirection.replace('ward', '')}, but it is faster ` +
-        `to take your clock the other way round — ${magnitude} hours ` +
+      `You are flying ${plan.travelDirection.replace('ward', '')}, but this plan ` +
+        `takes your clock the other way round — ${magnitude} hours ` +
         `${advancing ? 'earlier' : 'later'} rather than ${24 - magnitude} hours ` +
-        `${advancing ? 'later' : 'earlier'} — because clocks ${advancing ? 'delay' : 'advance'} ` +
-        `more slowly than they ${advancing ? 'advance' : 'delay'}.`,
+        `${advancing ? 'later' : 'earlier'} — because ${advancing ? 'advancing suits ' +
+        'early risers' : 'delaying (staying up later) comes easier to most people'}.`,
+    )
+  }
+
+  // Flight-choice heuristic: the trip to the airport and the cabin itself are
+  // bright, active hours, so a departure that lands them in the seek-light
+  // side of the day works with the shift instead of against it. Evidence on
+  // flight timing is thin (a Burgess press interview, not a trial), so this
+  // is framed as a rule of thumb. See SCIENCE.md.
+  if (plan.days.some((d) => d.transit && d.advice.some((a) => a.kind === 'seek-light'))) {
+    tips.push(
+      advancing
+        ? `When booking, a morning departure helps if you can get one: airports and ` +
+          `cabins are bright, busy places, and on an eastward advance that stimulation ` +
+          `lands in your morning seek-light hours. Evidence on flight timing is ` +
+          `limited — treat this as a rule of thumb.`
+        : `When booking, an evening or late-night departure helps if you can get one: ` +
+          `airports and cabins are bright, busy places, and on a westward delay that ` +
+          `stimulation lands in your evening seek-light hours. Evidence on flight ` +
+          `timing is limited — treat this as a rule of thumb.`,
     )
   }
 

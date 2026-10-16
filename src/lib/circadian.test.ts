@@ -10,6 +10,7 @@ import {
   normalizeShift,
   offsetHoursAt,
   plan,
+  strategyChoice,
   zoneCityName,
   zoneOffsetLabel,
 } from './circadian'
@@ -334,6 +335,56 @@ describe('plan: pre-travel days only when needed', () => {
 
   it('still uses the full run-up for large shifts', () => {
     expect(plan(eastward).preTravelShiftHours).toBeCloseTo(3, 6)
+  })
+})
+
+describe('strategyChoice', () => {
+  const eastbound9: Trip = {
+    originZone: 'Asia/Shanghai',
+    destinationZone: 'America/Los_Angeles',
+    departUtc: iso('2026-06-01T20:00:00Z'),
+    arriveUtc: iso('2026-06-02T08:30:00Z'),
+    habitualBedLocal: '23:00',
+    habitualWakeLocal: '07:00',
+    preTravelDays: 3,
+  }
+
+  it('offers both directions for an 8-12h eastward trip, with day counts', () => {
+    const c = strategyChoice(eastbound9)
+    expect(c).not.toBeNull()
+    expect(c!.advance.shiftHours).toBe(9)
+    expect(c!.delay.shiftHours).toBe(-15)
+    // Advancing 9h beats delaying 15h on days, but both are offered.
+    expect(c!.advance.days).toBeLessThan(c!.delay.days)
+  })
+
+  it('offers nothing westward or under 8h east', () => {
+    // LA -> Beijing is the 9h *delay* direction: no choice.
+    expect(
+      strategyChoice({ ...eastbound9, originZone: 'America/Los_Angeles', destinationZone: 'Asia/Shanghai' }),
+    ).toBeNull()
+    // LA -> Reykjavik is 7h east: auto decides.
+    expect(
+      strategyChoice({ ...eastbound9, originZone: 'America/Los_Angeles', destinationZone: 'Atlantic/Reykjavik' }),
+    ).toBeNull()
+  })
+
+  it('offers the choice across the 8h and 12h edges of the band', () => {
+    // LA -> London: +8 east.
+    expect(
+      strategyChoice({ ...eastbound9, originZone: 'America/Los_Angeles', destinationZone: 'Europe/London' }),
+    ).not.toBeNull()
+    // LA -> Moscow: +10 east.
+    expect(
+      strategyChoice({ ...eastbound9, originZone: 'America/Los_Angeles', destinationZone: 'Europe/Moscow' }),
+    ).not.toBeNull()
+  })
+
+  it('forced strategies flow through plan()', () => {
+    const delayed = plan({ ...eastbound9, strategy: 'delay' })
+    expect(delayed.direction).toBe('delay')
+    expect(delayed.shiftHours).toBe(-15)
+    expect(delayed.completed).toBe(true)
   })
 })
 

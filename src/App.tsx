@@ -3,6 +3,7 @@ import {
   plan,
   formatTime,
   formatWindow,
+  strategyChoice,
   type ClockFormat,
   type Place,
   type Trip,
@@ -129,13 +130,19 @@ export default function App() {
     }
   }, [])
 
-  const trip: Trip = {
+  const baseTrip: Trip = {
     ...DEMO_TIMES,
     originZone: origin.tz,
     destinationZone: destination.tz,
     originLabel: origin.city || origin.name,
     destinationLabel: destination.city || destination.name,
   }
+  // 8-12h eastward is the genuine judgment call: advance (shorter) or delay
+  // (gentler). Default to delay per the chronotype rule of thumb; the toggle
+  // lets early birds take the advance.
+  const choice = strategyChoice(baseTrip)
+  const [strategyPick, setStrategyPick] = useState<'delay' | 'advance'>('delay')
+  const trip: Trip = { ...baseTrip, strategy: choice ? strategyPick : 'auto' }
   // Whole days are the only meaningful states; fractional positions exist
   // only to smooth the eye between them. So the chart always rests on an
   // integer `targetDay`, and `pos` is the animated position easing there.
@@ -233,6 +240,34 @@ export default function App() {
       <p className="route">
         <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
       </p>
+
+      {choice && (
+        <div className="strategy-choice">
+          <span className="strategy-label">Shift direction:</span>
+          <div className="clock-toggle" role="group" aria-label="Shift direction">
+            <button
+              type="button"
+              onClick={() => setStrategyPick('delay')}
+              aria-pressed={strategyPick === 'delay'}
+              className={strategyPick === 'delay' ? 'active' : ''}
+            >
+              Delay · stay up later ({choice.delay.days} days)
+            </button>
+            <button
+              type="button"
+              onClick={() => setStrategyPick('advance')}
+              aria-pressed={strategyPick === 'advance'}
+              className={strategyPick === 'advance' ? 'active' : ''}
+            >
+              Advance · sleep earlier ({choice.advance.days} days)
+            </button>
+          </div>
+          <p className="strategy-tip">
+            This far east, both directions work. Night owls usually find delaying
+            easier; early birds may prefer advancing.
+          </p>
+        </div>
+      )}
 
       {!planNeeded && <p className="no-plan">{NO_PLAN_MESSAGE}</p>}
 

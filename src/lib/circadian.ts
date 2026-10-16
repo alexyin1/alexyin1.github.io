@@ -680,6 +680,33 @@ export function plan(trip: Trip): Plan {
   }
 }
 
+/**
+ * For long eastward trips (8-12h ahead) both directions round the clock are
+ * defensible: a hard advance or a longer-but-gentler delay. Returns both
+ * options with their day counts so the traveler can choose, or null when the
+ * trip is not in that band and 'auto' should decide.
+ */
+export function strategyChoice(trip: Trip): {
+  advance: { shiftHours: number; days: number }
+  delay: { shiftHours: number; days: number }
+} | null {
+  const adv = computeShift({ ...trip, strategy: 'advance' })
+  if (adv.travelDirection !== 'eastward') return null
+  const magnitude = Math.abs(adv.shiftHours)
+  if (magnitude < 8 || magnitude > 12) return null
+  const del = computeShift({ ...trip, strategy: 'delay' })
+  return {
+    advance: {
+      shiftHours: adv.shiftHours,
+      days: plan({ ...trip, strategy: 'advance' }).daysToAdjust,
+    },
+    delay: {
+      shiftHours: del.shiftHours,
+      days: plan({ ...trip, strategy: 'delay' }).daysToAdjust,
+    },
+  }
+}
+
 export type ClockFormat = '24h' | '12h'
 
 /** Format a single instant in a zone, e.g. '07:00' or '7:00 AM'. */
