@@ -175,9 +175,9 @@ describe('plan: shifting', () => {
     for (const s of steps) expect(s).toBeGreaterThanOrEqual(24 - 1e-9)
     const totalShifted = steps.reduce((acc, s) => acc + (s - 24), 0)
     expect(totalShifted + Math.abs(p.days.at(-1)!.remainingShiftHours)).toBeCloseTo(8, 6)
-    // 3h of the 8h happens before arrival at 1h/day, the remaining 5h after
-    // at 2h/day (E&B delay rate): 3 + 3 = 6 days of active shifting.
-    expect(p.daysToAdjust).toBe(6)
+    // 3h of the 8h happens at home at 1h/day, the remaining 5h after
+    // departure at 1.5h/day (E&B worked-example delay rate): 3 + 4 = 7 days.
+    expect(p.daysToAdjust).toBe(7)
   })
 
   it('starts the plan preTravelDays before departure', () => {
@@ -330,7 +330,7 @@ describe('plan: pre-travel days only when needed', () => {
     })
     expect(p.shiftHours).toBe(-3)
     expect(p.preTravelShiftHours).toBeCloseTo(1, 6)
-    expect(p.daysToAdjust).toBe(2)
+    expect(p.daysToAdjust).toBe(3) // 1h at home, then 1.5h + 0.5h nights
     expect(p.days).toHaveLength(3)
     expect(p.completed).toBe(true)
   })
@@ -391,7 +391,7 @@ describe('strategyChoice', () => {
     ).toBeNull()
   })
 
-  it('offers the choice across the 8h and 12h edges of the band', () => {
+  it('offers the choice for 8-11h east, never at 12h', () => {
     // LA -> London: +8 east.
     expect(
       strategyChoice({ ...eastbound9, originZone: 'America/Los_Angeles', destinationZone: 'Europe/London' }),
@@ -400,6 +400,15 @@ describe('strategyChoice', () => {
     expect(
       strategyChoice({ ...eastbound9, originZone: 'America/Los_Angeles', destinationZone: 'Europe/Moscow' }),
     ).not.toBeNull()
+    // LA -> Dubai: +11 east.
+    expect(
+      strategyChoice({ ...eastbound9, originZone: 'America/Los_Angeles', destinationZone: 'Asia/Dubai' }),
+    ).not.toBeNull()
+    // Honolulu -> Rome: +12. The direction distinction collapses at 12h, so
+    // no choice is offered and auto resolves to the gentler delay.
+    const twelve = { ...eastbound9, originZone: 'Pacific/Honolulu', destinationZone: 'Europe/Rome' }
+    expect(strategyChoice(twelve)).toBeNull()
+    expect(plan(twelve).direction).toBe('delay')
   })
 
   it('forced strategies flow through plan()', () => {
@@ -411,7 +420,7 @@ describe('strategyChoice', () => {
 })
 
 describe('plan: the travel night shifts at the full rate', () => {
-  it('JFK -> London: the travel day advances 1.5h even though its night is mid-flight', () => {
+  it('JFK -> London: the travel day advances 1h even though its night is mid-flight', () => {
     const p = plan({
       originZone: 'America/New_York',
       destinationZone: 'Europe/London',
@@ -426,7 +435,7 @@ describe('plan: the travel night shifts at the full rate', () => {
     const travel = p.days.find((d) => d.transit)!
     // The pre-travel cap must not stall the travel night: it steps at the
     // full advance rate, not 0.
-    expect(travel.remainingShiftHours - travel.remainingAfterTonightHours).toBeCloseTo(1.5, 6)
+    expect(travel.remainingShiftHours - travel.remainingAfterTonightHours).toBeCloseTo(1, 6)
     // And each successive bedtime keeps moving -- no repeated night.
     for (let i = 1; i < p.days.length; i++) {
       expect(p.days[i].bed.getTime()).not.toBe(p.days[i - 1].bed.getTime() + 86400000)
@@ -435,7 +444,7 @@ describe('plan: the travel night shifts at the full rate', () => {
     expect(p.completed).toBe(true)
   })
 
-  it('a delaying travel night steps at the 2h delay rate', () => {
+  it('a delaying travel night steps at the full delay rate', () => {
     const p = plan({
       originZone: 'Europe/Rome',
       destinationZone: 'Pacific/Honolulu',
@@ -446,7 +455,7 @@ describe('plan: the travel night shifts at the full rate', () => {
       preTravelDays: 3,
     })
     const travel = p.days.find((d) => d.transit)!
-    expect(travel.remainingShiftHours - travel.remainingAfterTonightHours).toBeCloseTo(-2, 6)
+    expect(travel.remainingShiftHours - travel.remainingAfterTonightHours).toBeCloseTo(-1.5, 6)
   })
 })
 
@@ -751,15 +760,18 @@ describe('plan: post-arrival local anchoring', () => {
   const destBedHours = (trip: Trip) =>
     plan(trip)
       .days.filter((d) => d.bed.getTime() >= trip.arriveUtc.getTime())
-      .map((d) => DateTime.fromJSDate(d.bed, { zone: trip.destinationZone }).hour)
+      .map((d) => {
+        const dt = DateTime.fromJSDate(d.bed, { zone: trip.destinationZone })
+        return dt.hour + dt.minute / 60
+      })
 
-  it('moves a delaying traveler 2h a night, landing on the local bedtime', () => {
+  it('moves a delaying traveler 1.5h a night, landing on the local bedtime', () => {
     // Habitual bed 23:00; destination nights step at the full delay rate and
-    // the last one lands exactly on local time.
-    expect(destBedHours(toBeijing)).toEqual([19, 21, 23])
+    // the last one lands exactly on local time: 18:30, 20:00, 21:30, 23:00.
+    expect(destBedHours(toBeijing)).toEqual([18.5, 20, 21.5, 23])
   })
 
-  it('moves an advancing traveler 1.5h a night, landing on the local bedtime', () => {
+  it('moves an advancing traveler 1h a night, landing on the local bedtime', () => {
     const beds = plan(fromBeijing)
       .days.filter((d) => d.bed.getTime() >= fromBeijing.arriveUtc.getTime())
       .map((d) => DateTime.fromJSDate(d.bed, { zone: fromBeijing.destinationZone }))
@@ -925,8 +937,8 @@ describe('plan: Los Angeles <-> Beijing', () => {
     const p = plan(toBeijing)
     expect(p.shiftHours).toBe(-9)
     expect(p.direction).toBe('delay')
-    // 3h before arrival at 1h/day, then 6h at the E&B 2h/day delay rate.
-    expect(p.daysToAdjust).toBe(6)
+    // 3h at home at 1h/day, then 6h at the E&B worked-example 1.5h/day rate.
+    expect(p.daysToAdjust).toBe(7)
   })
 
   it('is a 9h advance in the other direction', () => {

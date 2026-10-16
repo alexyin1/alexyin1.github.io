@@ -154,6 +154,14 @@ export function briefing(plan: Plan): Briefing {
     )
   }
 
+  // E&B are explicit that shift rates are estimates: the real rate varies by
+  // individual and by the bright light actually received.
+  tips.push(
+    'These shift rates are estimates — how fast your clock actually moves ' +
+      'varies from person to person and with the light you really get. Treat ' +
+      'the schedule as a target, not a guarantee.',
+  )
+
   if (plan.daysToAdjust >= PARAMS.maxPlanDays - 1) {
     tips.push(
       'This is a long shift. Partial adaptation is a perfectly good outcome ' +

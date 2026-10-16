@@ -22,6 +22,16 @@ const eastbound: Trip = {
   destinationLabel: 'Los Angeles',
 }
 
+describe('briefing: rate caveat', () => {
+  it('notes that shift rates are individual estimates', () => {
+    for (const trip of [base, eastbound]) {
+      expect(
+        briefing(plan(trip)).tips.some((t) => /rates are estimates/.test(t) && /target, not a guarantee/.test(t)),
+      ).toBe(true)
+    }
+  })
+})
+
 describe('needsPlan', () => {
   it('draws the line at two time zones', () => {
     expect(needsPlan(plan(base))).toBe(true) // 9h
@@ -48,10 +58,10 @@ describe('briefing', () => {
 
   it('leads the summary with the direction verb', () => {
     expect(briefing(plan(base)).summary).toBe(
-      'Delay your body clock by 9 hours over about 6 days.',
+      'Delay your body clock by 9 hours over about 7 days.',
     )
     expect(briefing(plan(eastbound)).summary).toBe(
-      'Advance your body clock by 9 hours over about 7 days.',
+      'Advance your body clock by 9 hours over about 9 days.',
     )
   })
 
@@ -110,11 +120,10 @@ describe('briefing', () => {
   })
 
   it('estimates days of jet lag discomfort from days still >2h misaligned', () => {
-    // Beijing delay: the transit day lands 6h out, the next day 4h; by day
-    // three the gap is 2h and no longer counts.
-    expect(briefing(plan(base)).tips.some((t) => /Prepare for about 2 days of jet lag discomfort/.test(t))).toBe(true)
-    // Beijing -> LA advance adapts more slowly: 6, 4.5 and 3h days.
-    expect(briefing(plan(eastbound)).tips.some((t) => /Prepare for about 3 days of jet lag discomfort/.test(t))).toBe(true)
+    // Beijing delay at 1.5h/night: 6, 4.5 and 3h days exceed the 2h bar.
+    expect(briefing(plan(base)).tips.some((t) => /Prepare for about 3 days of jet lag discomfort/.test(t))).toBe(true)
+    // Beijing -> LA advance at 1h/night: 6, 5, 4 and 3h days.
+    expect(briefing(plan(eastbound)).tips.some((t) => /Prepare for about 4 days of jet lag discomfort/.test(t))).toBe(true)
   })
 
   it('promises little discomfort when the shift is under two time zones', () => {

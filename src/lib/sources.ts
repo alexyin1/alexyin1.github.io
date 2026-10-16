@@ -19,7 +19,7 @@ export const SOURCES: Source[] = [
       'Eastman CI, Burgess HJ (2009). How To Travel the World Without Jet lag. Sleep Med Clin 4(2):241–255.',
     url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC2829880/',
     basis:
-      'The core protocol: CBTmin-anchored light timing, pre-flight 1h/day sleep shifting, ~1.5h/day advance and ~2h/day delay rates, 0.5 mg melatonin ~5h before bedtime for advances only.',
+      'The core protocol: CBTmin-anchored light timing, pre-flight 1h/day sleep shifting, ~1h/day advance and ~1.5h/day delay rates (their worked-example rates; they quote 1.5/2 as upper bounds), 0.5 mg melatonin ~5h before bedtime for advances only.',
   },
   {
     id: 'youngstedt-2019',
@@ -28,6 +28,14 @@ export const SOURCES: Source[] = [
     url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC6462487/',
     basis:
       'Exercise timing: morning exercise phase-advances; evening (~7–10 pm) exercise phase-delays.',
+  },
+  {
+    id: 'eastman-2015',
+    citation:
+      'Eastman CI et al. (2015). Circadian rhythm phase shifts after a 9-h advance differ between individuals. Sci Rep 5:8381.',
+    url: 'https://www.nature.com/articles/srep08381',
+    basis:
+      'On large advances, a substantial fraction of clocks delay instead (antidromic re-entrainment) — why 8–11h eastward trips offer an explicit advance-or-delay choice, defaulting to delay.',
   },
   {
     id: 'cdc-yellow-book',

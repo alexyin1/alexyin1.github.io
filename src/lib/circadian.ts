@@ -45,16 +45,20 @@ export const PARAMS = {
    */
   cbtMinBeforeWakeHours: 3.5,
   /**
-   * Max clock advance per day after arrival. E&B plan advances at ~1.5h/day
-   * when light (and melatonin) are correctly timed.
+   * Max clock advance per day after departure. E&B state 1.5h/day as an
+   * upper bound under ideal light timing, but their worked examples deliver
+   * ~1h/day and they advise never advancing a sleep schedule faster than
+   * that -- and since sleep tracks CBTmin here, the clock rate IS the sleep
+   * rate. Conservative is also the safe direction for a planner: assuming
+   * too fast ends the plan while the traveler is still misaligned.
    */
-  advanceHoursPerDay: 1.5,
+  advanceHoursPerDay: 1,
   /**
-   * Max clock delay per day after arrival. E&B plan delays at ~2h/day with
-   * well-timed light; delays come easier because the free-running human clock
-   * runs slightly longer than 24h.
+   * Max clock delay per day after departure. E&B's stated upper bound is
+   * 2h/day; their worked examples deliver ~1.5h/day, which we use for the
+   * same reasons as the advance rate.
    */
-  delayHoursPerDay: 2,
+  delayHoursPerDay: 1.5,
   /**
    * Pre-flight shift rate. E&B's pre-adaptation protocols move bed and wake
    * times 1h/day for the few days before departure.
@@ -644,10 +648,13 @@ export function plan(trip: Trip): Plan {
 }
 
 /**
- * For long eastward trips (8-12h ahead) both directions round the clock are
- * defensible: a hard advance or a longer-but-gentler delay. Returns both
- * options with their day counts so the traveler can choose, or null when the
- * trip is not in that band and 'auto' should decide.
+ * For eastward trips of 8-11h both directions round the clock are defensible:
+ * a hard advance or a longer-but-gentler delay -- and in lab studies of large
+ * advances a substantial fraction of clocks delay on their own (antidromic
+ * re-entrainment; Eastman et al. 2015), so the choice is real. Returns both
+ * options with day counts so the traveler can choose, or null outside the
+ * band. At 12h the advance/delay distinction collapses and auto always
+ * resolves to the gentler delay, so no choice is offered.
  */
 export function strategyChoice(trip: Trip): {
   advance: { shiftHours: number; days: number }
@@ -656,7 +663,7 @@ export function strategyChoice(trip: Trip): {
   const adv = computeShift({ ...trip, strategy: 'advance' })
   if (adv.travelDirection !== 'eastward') return null
   const magnitude = Math.abs(adv.shiftHours)
-  if (magnitude < 8 || magnitude > 12) return null
+  if (magnitude < 8 || magnitude >= 12) return null
   const del = computeShift({ ...trip, strategy: 'delay' })
   return {
     advance: {

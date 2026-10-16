@@ -58,9 +58,11 @@ The sign conventions that matter:
 
 - **Advance** = clock moves earlier = eastward. **Delay** = later = westward.
 - Light **after** CBTmin advances the clock; light **before** it delays.
-- After arrival, advances run ~1.5h/day and delays ~2h/day (E&B planning
-  rates), so a large eastward shift is sometimes faster handled as a westward
-  delay. `computeShift` picks whichever direction finishes sooner.
+- After departure, advances run ~1h/day and delays ~1.5h/day (the rates
+  E&B's worked examples deliver; their 1.5/2 figures are upper bounds), so a
+  large eastward shift is sometimes faster handled as a westward delay.
+  `computeShift` picks whichever direction finishes sooner; 8-11h eastward
+  trips expose an explicit advance-or-delay choice, and 12h always delays.
 - Before arrival the traveler is still on home time, so shifting is capped at
   1h/day and 3h in total; the remainder waits until landing, where local
   daylight and meal times help.

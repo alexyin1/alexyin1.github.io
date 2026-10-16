@@ -22,8 +22,8 @@ low-dose melatonin for advances.
 | Recommendation | Where in code | Source | Notes |
 |---|---|---|---|
 | CBTmin ≈ 3.5h before habitual wake | `PARAMS.cbtMinBeforeWakeHours` | E&B | E&B give 3–4.5h after a full night; we use the middle of the range. |
-| Advance ≤ ~1.5h/day after arrival | `PARAMS.advanceHoursPerDay` | E&B | Their planning rate with well-timed light + melatonin. |
-| Delay ≤ ~2h/day after arrival | `PARAMS.delayHoursPerDay` | E&B | Their planning rate with well-timed light. |
+| Advance ≤ ~1h/day after departure | `PARAMS.advanceHoursPerDay` | E&B | E&B quote 1.5h/day as an upper bound, but their worked examples deliver ~1h/day and they advise never advancing a sleep schedule faster; since sleep tracks CBTmin here, the clock rate is the sleep rate. Conservative is the safe error direction for a planner. |
+| Delay ≤ ~1.5h/day after departure | `PARAMS.delayHoursPerDay` | E&B | E&B quote 2h/day as an upper bound; worked examples deliver ~1.5h/day. Same conservatism rationale. |
 | Pre-flight: shift sleep 1h/day | `PARAMS.preTravelHoursPerDay` | E&B | Their pre-adaptation protocol. |
 | Advance: bright light first ~3h after waking (pre-flight) | `plan()`, advance branch | E&B | "Maximize bright light in the first 3–4h after waking." |
 | Advance, after arrival: dim until CBTmin passes, bright light after | `plan()`, landed advance branch | E&B / light PRC | Light before CBTmin would push the wrong way; window keyed to simulated CBTmin. |
@@ -46,7 +46,7 @@ low-dose melatonin for advances.
 | CBTmin stepping as fixed hours/day | `plan()` pass 1 | Simplification. The underlying PRC is dose- and phase-dependent; E&B's planning rates approximate it, and we inherit that approximation. |
 | Plans truncated at 16 days | `PARAMS.maxPlanDays` | Practicality. |
 | Dinner ≥3h before bed | briefing tip | General sleep hygiene, not re-entrainment evidence. |
-| 8–12h eastward: traveler chooses advance vs delay, default delay | `strategyChoice()`, App toggle | Both routes round the clock are defensible in this band. Chronotype rule of thumb (night owls delay, early birds advance) is common clinical advice, not a trial result. |
+| 8–11h eastward: traveler chooses advance vs delay, default delay | `strategyChoice()`, App toggle | Both routes are defensible, and [Eastman et al. 2015](https://www.nature.com/articles/srep08381) found ~half of participants' clocks delayed on their own after a 9h advance (antidromic re-entrainment). At 12h the direction distinction collapses (Aschoff) and auto resolves to the delay. Chronotype rule of thumb is common clinical advice, not a trial result. |
 
 ## Deliberately excluded
 

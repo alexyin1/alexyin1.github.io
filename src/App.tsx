@@ -268,8 +268,10 @@ export default function App() {
             </button>
           </div>
           <p className="strategy-tip">
-            This far east, both directions work. Night owls usually find delaying
-            easier; early birds may prefer advancing.
+            This far east, both directions work — in lab studies of large advances,
+            up to half of participants' clocks drifted into a delay on their own
+            (Eastman et al. 2015). Night owls usually find delaying easier; early
+            birds may prefer advancing.
           </p>
         </div>
       )}
