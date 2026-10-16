@@ -509,8 +509,22 @@ export function plan(trip: Trip): Plan {
   // Pass 2: emit advice for the days we are actually going to show.
   const days: PlanDay[] = []
 
+  // The travel day is the one whose wake-to-wake span contains the departure
+  // instant. Days partition time, so exactly one qualifies -- unlike flight
+  // overlap, which can catch two days when a long flight spans a night and
+  // the traveler wakes again just before landing.
+  const departureDayIndex = frames.findIndex(
+    (f) => f.wake.toJSDate() <= trip.departUtc && trip.departUtc < f.nextWake.toJSDate(),
+  )
+
   for (let i = 0; i < totalDays; i++) {
-    const { wake: wakeAt, nextWake, bed: bedAt, landed, remainingAtStart } = frames[i]
+    const { wake: wakeAt, nextWake, bed: bedAt, remainingAtStart } = frames[i]
+    // At the destination once past the travel day, even if that day's wake
+    // technically precedes touchdown (a wake mid-flight on a long red-eye):
+    // such a day is lived at the destination and should be labelled -- and
+    // advised -- as there.
+    const landed =
+      frames[i].landed || (departureDayIndex >= 0 && i > departureDayIndex)
     const zone = landed ? trip.destinationZone : trip.originZone
     // Re-resolve the offset per day so a DST transition mid-plan shows up.
     const place = landed
@@ -627,10 +641,9 @@ export function plan(trip: Trip): Plan {
 
     advice.sort((a, b) => a.start.getTime() - b.start.getTime())
 
-    // A day that overlaps the flight is shown in both endpoint clocks, since
-    // the traveler wakes in one and goes to bed in the other.
-    const transit =
-      wakeAt.toJSDate() < trip.arriveUtc && nextWake.toJSDate() > trip.departUtc
+    // The departure day is shown in both endpoint clocks, since the traveler
+    // wakes in one zone and goes to bed in the other.
+    const transit = i === departureDayIndex
     const otherPlace = transit
       ? landed
         ? makePlace(trip.originZone, trip.originLabel, wakeAt.toJSDate())

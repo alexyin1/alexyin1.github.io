@@ -796,6 +796,36 @@ describe('plan: post-arrival local anchoring', () => {
     }
   })
 
+  it('marks exactly one transit day even when a long flight spans two days', () => {
+    // Rome -> Honolulu (12h delay, 12.5h flight): the traveler's body-night
+    // ends mid-descent, so the day after departure wakes minutes before
+    // touchdown. Under flight-overlap logic both days flagged as transit;
+    // the departure-instant rule keeps it to one, and the mid-flight-wake
+    // day is labelled (and advised) as the destination it is lived in.
+    const p = plan({
+      originZone: 'Europe/Rome',
+      destinationZone: 'Pacific/Honolulu',
+      departUtc: iso('2026-06-01T20:00:00Z'),
+      arriveUtc: iso('2026-06-02T08:30:00Z'),
+      habitualBedLocal: '23:00',
+      habitualWakeLocal: '07:00',
+      preTravelDays: 3,
+    })
+    const transitDays = p.days.filter((d) => d.transit)
+    expect(transitDays).toHaveLength(1)
+    expect(transitDays[0].wake.getTime()).toBeLessThanOrEqual(p.days[transitDays[0].index].wake.getTime())
+    // The departure instant falls inside the transit day's span.
+    const t = transitDays[0]
+    const sleepEnd = t.advice.find((a) => a.kind === 'sleep')!.end
+    expect(t.wake.getTime()).toBeLessThanOrEqual(iso('2026-06-01T20:00:00Z').getTime())
+    expect(sleepEnd.getTime()).toBeGreaterThan(iso('2026-06-01T20:00:00Z').getTime())
+    // Everything after the travel day is Honolulu, including the
+    // wakes-before-touchdown day; everything before is Rome.
+    for (const d of p.days) {
+      expect(d.place.label).toBe(d.index <= t.index ? 'Rome' : 'Honolulu')
+    }
+  })
+
   it('marks the day that overlaps the flight as transit, with both places', () => {
     const p = plan({ ...toBeijing, originLabel: 'Los Angeles', destinationLabel: 'Beijing' })
     const transitDays = p.days.filter((d) => d.transit)
