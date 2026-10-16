@@ -420,16 +420,20 @@ export function plan(trip: Trip): Plan {
   for (let i = 0; i < PARAMS.maxPlanDays; i++) {
     const wakeAt = wakeCursor
     const landed = wakeAt.toJSDate() >= trip.arriveUtc
-    // Tonight is spent at the destination if a body-schedule bedtime estimate
-    // falls after arrival. This covers the travel day, whose waking hours
-    // start at home but whose night is the first one in the new zone.
     const estimatedBed = wakeAt.plus(hours(24 - sleepHours))
+    // Tonight is spent at the destination if a body-schedule bedtime estimate
+    // falls after arrival -- that is what lets sleep anchor to local time.
     const nightAtDestination = estimatedBed.toJSDate() >= trip.arriveUtc
+    // But the *rate* switches at departure, not arrival: the gentle pre-travel
+    // pace and its cap exist because the traveler is still living on home
+    // time around work and family. From the travel night onward (including a
+    // night slept mid-flight on a red-eye), the full E&B rate applies. A
+    // night counts as pre-departure only when the whole day ends before the
+    // flight leaves -- comparing bedtime alone misclassifies the travel night
+    // on big advances, where the shifted bedtime creeps ahead of departure.
+    const nightAfterDeparture = wakeAt.plus(hours(24)).toJSDate() > trip.departUtc
 
-    // Before that first destination night the traveler is still living on
-    // home time, so shifting is slower and capped in total; afterwards the
-    // destination's own light and social cues support the full rate.
-    const allowance = nightAtDestination
+    const allowance = nightAfterDeparture
       ? arrivalRate
       : Math.min(
           PARAMS.preTravelHoursPerDay,
@@ -437,7 +441,7 @@ export function plan(trip: Trip): Plan {
         )
     const magnitude = Math.min(allowance, Math.abs(remaining))
     const step = Math.sign(remaining) * magnitude
-    if (!nightAtDestination) preTravelShiftUsed += magnitude
+    if (!nightAfterDeparture) preTravelShiftUsed += magnitude
 
     // A plan day runs from waking to falling asleep, the way a person
     // experiences it -- so the trailing sleep window belongs to this day even
@@ -490,15 +494,19 @@ export function plan(trip: Trip): Plan {
 
   const daysNeeded = frames.filter((f) => f.step !== 0).length
   const preTravelShiftHours = preTravelShiftUsed
+  // The travel day is the one whose wake-to-wake span contains the departure
+  // instant; days partition time, so exactly one qualifies. It anchors both
+  // the transit flag and the plan-length floor.
+  const departureDayIndex = frames.findIndex(
+    (f) => f.wake.toJSDate() <= trip.departUtc && trip.departUtc < f.nextWake.toJSDate(),
+  )
+
   // Run until the night the shift completes -- no trailing settled day, the
   // itinerary ends when the work does -- but always cover through the first
-  // full day at the destination so the traveler gets on-the-ground guidance.
-  // That is the day after the frame containing the arrival instant; counting
-  // calendar days instead overshoots by one on overnight arrivals.
-  const arrivalDayIndex = frames.findIndex(
-    (f) => f.wake.toJSDate() <= trip.arriveUtc && trip.arriveUtc < f.nextWake.toJSDate(),
-  )
-  const coverThroughArrival = arrivalDayIndex >= 0 ? arrivalDayIndex + 2 : 1
+  // day after the travel day, so the traveler gets on-the-ground guidance.
+  // (Keying this on the arrival frame instead overshoots by a day whenever a
+  // shifted wake lands minutes before touchdown.)
+  const coverThroughArrival = departureDayIndex >= 0 ? departureDayIndex + 2 : 1
   const totalDays = Math.min(
     PARAMS.maxPlanDays,
     Math.max(
@@ -517,14 +525,6 @@ export function plan(trip: Trip): Plan {
 
   // Pass 2: emit advice for the days we are actually going to show.
   const days: PlanDay[] = []
-
-  // The travel day is the one whose wake-to-wake span contains the departure
-  // instant. Days partition time, so exactly one qualifies -- unlike flight
-  // overlap, which can catch two days when a long flight spans a night and
-  // the traveler wakes again just before landing.
-  const departureDayIndex = frames.findIndex(
-    (f) => f.wake.toJSDate() <= trip.departUtc && trip.departUtc < f.nextWake.toJSDate(),
-  )
 
   for (let i = 0; i < totalDays; i++) {
     const { wake: wakeAt, nextWake, bed: bedAt, remainingAtStart } = frames[i]

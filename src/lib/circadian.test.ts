@@ -258,11 +258,12 @@ describe('plan: pre-travel vs post-arrival rates', () => {
   it('shifts at most 1h/day on nights spent at home, in either direction', () => {
     for (const trip of [eastward, westward]) {
       const p = plan({ ...trip, preTravelDays: 5 })
+      const travelDay = p.days.find((d) => d.transit)!
       for (const d of p.days) {
-        // The travel day's night is already spent at the destination, where
-        // the full post-arrival rate applies, so judge by where the night
-        // falls rather than where the day started.
-        if (d.bed.getTime() >= trip.arriveUtc.getTime()) continue
+        // From the travel day onward the full post-departure rate applies
+        // (including a night slept mid-flight), so only the true home nights
+        // -- days before the travel day -- are held to the gentle rate.
+        if (d.index >= travelDay.index) continue
         const moved = Math.abs(
           24 -
             (DateTime.fromJSDate(d.nextCbtMin).toMillis() -
@@ -295,9 +296,10 @@ describe('plan: pre-travel vs post-arrival rates', () => {
       PARAMS.maxPreTravelShiftHours,
     )
     expect(plan({ ...westward, preTravelDays: 3 }).preTravelShiftHours).toBeGreaterThan(0)
-    // A tiny shift finishes before the cap ever binds.
+    // A tiny shift needs no pre-travel days at all: the travel night, at the
+    // full post-departure rate, absorbs it.
     const oneHour = { ...eastward, destinationZone: 'America/Denver' } // PDT -7 -> MDT -6
-    expect(plan(oneHour).preTravelShiftHours).toBeCloseTo(1, 6)
+    expect(plan(oneHour).preTravelShiftHours).toBeCloseTo(0, 6)
   })
 
   it('still completes the full shift, just over more days', () => {
@@ -408,6 +410,46 @@ describe('strategyChoice', () => {
   })
 })
 
+describe('plan: the travel night shifts at the full rate', () => {
+  it('JFK -> London: the travel day advances 1.5h even though its night is mid-flight', () => {
+    const p = plan({
+      originZone: 'America/New_York',
+      destinationZone: 'Europe/London',
+      departUtc: iso('2026-06-01T20:00:00Z'),
+      arriveUtc: iso('2026-06-02T08:30:00Z'),
+      habitualBedLocal: '23:00',
+      habitualWakeLocal: '07:00',
+      preTravelDays: 3,
+    })
+    expect(p.shiftHours).toBe(5)
+    expect(p.preTravelShiftHours).toBeCloseTo(3, 6)
+    const travel = p.days.find((d) => d.transit)!
+    // The pre-travel cap must not stall the travel night: it steps at the
+    // full advance rate, not 0.
+    expect(travel.remainingShiftHours - travel.remainingAfterTonightHours).toBeCloseTo(1.5, 6)
+    // And each successive bedtime keeps moving -- no repeated night.
+    for (let i = 1; i < p.days.length; i++) {
+      expect(p.days[i].bed.getTime()).not.toBe(p.days[i - 1].bed.getTime() + 86400000)
+    }
+    expect(p.days).toHaveLength(5)
+    expect(p.completed).toBe(true)
+  })
+
+  it('a delaying travel night steps at the 2h delay rate', () => {
+    const p = plan({
+      originZone: 'Europe/Rome',
+      destinationZone: 'Pacific/Honolulu',
+      departUtc: iso('2026-06-01T20:00:00Z'),
+      arriveUtc: iso('2026-06-02T08:30:00Z'),
+      habitualBedLocal: '23:00',
+      habitualWakeLocal: '07:00',
+      preTravelDays: 3,
+    })
+    const travel = p.days.find((d) => d.transit)!
+    expect(travel.remainingShiftHours - travel.remainingAfterTonightHours).toBeCloseTo(-2, 6)
+  })
+})
+
 describe('plan: travel direction', () => {
   it('reports the way round the clock the destination lies', () => {
     expect(plan(eastward).travelDirection).toBe('eastward')
@@ -486,9 +528,13 @@ describe('plan: day orientation', () => {
   })
 
   it('keeps sleep coupled to CBTmin before arrival, decoupled after', () => {
-    const p = plan(eastward)
+    // The westward trip makes the decoupling visible: anchored bedtimes ease
+    // 1h/night while CBTmin delays 2h/night, so the wake-to-CBTmin gap
+    // drifts off the fixed pre-arrival coupling. (On this advance trip the
+    // easing happens to shrink in step with the rate, masking it.)
+    const p = plan(westward)
     for (const day of p.days) {
-      if (day.wake.getTime() < eastward.arriveUtc.getTime()) {
+      if (day.wake.getTime() < westward.arriveUtc.getTime()) {
         // Pre-arrival, wake tracks CBTmin at the fixed physiological offset.
         expect(day.cbtMin.getTime()).toBeLessThan(day.wake.getTime())
         expect((day.wake.getTime() - day.cbtMin.getTime()) / 3.6e6).toBeCloseTo(
@@ -499,7 +545,7 @@ describe('plan: day orientation', () => {
     }
     // Post-arrival, sleep is local-anchored while CBTmin moves underneath,
     // so the wake-to-CBTmin gap departs from the fixed pre-arrival coupling.
-    const landedDays = p.days.filter((d) => d.wake.getTime() >= eastward.arriveUtc.getTime())
+    const landedDays = p.days.filter((d) => d.wake.getTime() >= westward.arriveUtc.getTime())
     expect(landedDays.length).toBeGreaterThan(0)
     const offAxis = landedDays.filter((d) => {
       const gapH = (d.wake.getTime() - d.cbtMin.getTime()) / 3.6e6
@@ -759,9 +805,15 @@ describe('plan: post-arrival local anchoring', () => {
   })
 
   it('splits the advancing morning around a lagging CBTmin', () => {
-    // Needs a large advance: the lag must exceed the Tmin-before-wake offset
-    // plus the easing, so force the 11h advance variant of an LA-Dubai hop.
-    const p = plan({ ...toBeijing, destinationZone: 'Asia/Dubai', strategy: 'advance' })
+    // Needs a very large advance: the lag must exceed the Tmin-before-wake
+    // offset plus the easing even after the travel night's full-rate step,
+    // so force the 12h advance variant of a Rome-Honolulu hop.
+    const p = plan({
+      ...toBeijing,
+      originZone: 'Europe/Rome',
+      destinationZone: 'Pacific/Honolulu',
+      strategy: 'advance',
+    })
     const splitDay = p.days.find(
       (d) =>
         d.wake.getTime() >= toBeijing.arriveUtc.getTime() &&

@@ -75,21 +75,20 @@ describe('briefing', () => {
     expect(tip).toMatch(/remaining 6 hours happen after you land/)
   })
 
-  it('still shifts on the departure day itself when there is no run-up', () => {
-    // The departure morning is always a pre-arrival day, so even with
-    // preTravelDays: 0 there is an hour of shifting before the flight.
+  it('does all shifting en route when there is no run-up', () => {
+    // With preTravelDays: 0, day one is the travel day and its night already
+    // runs at the full post-departure rate -- nothing happens "at home".
     const p = plan({ ...base, preTravelDays: 0 })
-    expect(p.preTravelShiftHours).toBeCloseTo(1, 6)
-    expect(briefing(p).tips[1]).toMatch(/moves you 1 hour while you are still at home/)
+    expect(p.preTravelShiftHours).toBeCloseTo(0, 6)
+    expect(briefing(p).tips[1]).toMatch(/all of its shifting after you land/)
   })
 
-  it('agrees with the verb on singular and plural remainders', () => {
-    expect(briefing(plan({ ...base, preTravelDays: 0 })).tips[1]).toMatch(
-      /remaining 8 hours happen after you land/,
-    )
-    // 4h total: 3h at home, 1h left over.
+  it('quantifies the remainder that happens after departure', () => {
+    // 9h delay: 3h at home, 6h after.
+    expect(briefing(plan(base)).tips[1]).toMatch(/remaining 6 hours happen after you land/)
+    // 4h advance: 2 pre-travel days, 2h after.
     const fourHours = plan({ ...base, destinationZone: 'America/Halifax' }) // PDT -7 -> ADT -3
-    expect(briefing(fourHours).tips[1]).toMatch(/remaining 1 hour happens after you land/)
+    expect(briefing(fourHours).tips[1]).toMatch(/remaining 2 hours happen after you land/)
   })
 
   it('flags when the clock goes the opposite way to the flight', () => {
