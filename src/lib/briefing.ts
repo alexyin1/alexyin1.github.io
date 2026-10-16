@@ -93,13 +93,13 @@ export function briefing(plan: Plan): Briefing {
         `${plural(plan.preTravelShiftHours, 'hour')} while you are still at home. ` +
         (post > 0
           ? `The remaining ${plural(post, 'hour')} ${post === 1 ? 'happens' : 'happen'} ` +
-            `after you land, where the local daylight and meal times are working with you.`
+            `after you land, where local daylight is working with you.`
           : `The rest settles once you land.`),
     )
   } else {
     tips.push(
-      'This plan does all of its shifting after you land, where the local ' +
-        'daylight and meal times are working with you.',
+      'This plan does all of its shifting after you land, where local ' +
+        'daylight is working with you.',
     )
   }
 
@@ -140,9 +140,9 @@ export function briefing(plan: Plan): Briefing {
   // Meal timing sets the body's peripheral clocks even though it does not
   // move the central one (Wehrens 2017), hence: eat on the new schedule.
   tips.push(
-    'Eat your meals on the schedule, especially the first one of the day — ' +
-      'meal timing helps the rest of your body fall in line with the new clock. ' +
-      'Try to have your last meal at least 3 hours before your target bedtime.',
+    'Try to eat breakfast after rising and dinner at least 3 hours before ' +
+      'sleeping — meal timing helps the rest of your body fall in line with ' +
+      'the new clock.',
   )
 
   if (advancing && plan.timeline.some((a) => a.kind === 'melatonin')) {

@@ -208,6 +208,8 @@ footer {
   color: #444;
   margin-bottom: 0.4rem;
 }
+
+.day-status { color: #3f8f6f; font-weight: 600; }
 .vis-controls input[type='range'] { flex: 1; min-width: 9rem; accent-color: #4a5aa8; }
 .vis-controls datalist { display: none; }
 

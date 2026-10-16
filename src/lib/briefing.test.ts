@@ -127,7 +127,7 @@ describe('briefing', () => {
 
   it('carries the standing meal rules that left the itinerary', () => {
     const tips = briefing(plan(base)).tips
-    expect(tips.some((t) => /last meal at least 3 hours before/.test(t))).toBe(true)
+    expect(tips.some((t) => /dinner at least 3 hours before sleeping/.test(t))).toBe(true)
     expect(tips.some((t) => /meal timing helps/.test(t))).toBe(true)
   })
 

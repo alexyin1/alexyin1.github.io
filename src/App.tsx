@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { DateTime } from 'luxon'
 import {
   plan,
   formatTime,
@@ -211,6 +212,10 @@ export default function App() {
 
   const brief = briefing(result)
   const planNeeded = needsPlan(result)
+  // The baseline "day 0" is the calendar day before the plan starts.
+  const baselineDate = DateTime.fromISO(result.days[0].date)
+    .minus({ days: 1 })
+    .toFormat('yyyy-MM-dd')
 
   return (
     <main>
@@ -304,17 +309,15 @@ export default function App() {
 
       <div className="vis-controls">
         <label htmlFor="dayslider" className="vis-day">
-          {visDay === 0 ? (
-            <>
-              Day 0 of {dayCount} — baseline, before any shifting{' '}
-              <span className="zone">({result.origin.label})</span>
-            </>
-          ) : (
-            <>
-              Day {visDay} of {dayCount} — {result.days[visDay - 1].date}{' '}
-              <span className="zone">({result.days[visDay - 1].place.label})</span>
-            </>
-          )}
+          {/* Constant shape -- Day X of Y, date, city -- with a status suffix
+              on the endpoints, so the text does not jump between formats. */}
+          Day {visDay} of {dayCount} —{' '}
+          {visDay === 0 ? baselineDate : result.days[visDay - 1].date}{' '}
+          <span className="zone">
+            ({visDay === 0 ? result.origin.label : result.days[visDay - 1].place.label})
+          </span>
+          {visDay === 0 && <span className="day-status"> — baseline, before any shifting</span>}
+          {visDay === dayCount && <span className="day-status"> — fully adjusted</span>}
         </label>
         <div className="vis-row">
         <button
