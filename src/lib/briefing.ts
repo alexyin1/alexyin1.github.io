@@ -115,12 +115,11 @@ export function briefing(plan: Plan): Briefing {
   ).length
   tips.push(
     roughDays > 0
-      ? `Prepare for about ${plural(roughDays, 'day')} of jet lag discomfort — it sets ` +
-        `in when your clock is two or more time zones out of step. If you are wide ` +
-        `awake in the small hours or fading early, that is your clock still ` +
-        `traveling — hold the light timing and it passes. The first couple of ` +
-        `nights at the destination are deliberately up to ${PARAMS.arrivalEaseHours} ` +
-        `hours off the local norm, easing onto local time.`
+      ? `Prepare for about ${plural(roughDays, 'day')} of jet lag discomfort — people tend ` +
+        `to experience jet lag when the internal clock differs by two or more ` +
+        `time zones. The first couple of nights at the destination are ` +
+        `deliberately up to ${PARAMS.arrivalEaseHours} hours off the local norm, ` +
+        `easing onto local time.`
       : `Your clock arrives nearly aligned, so expect little jet lag discomfort — ` +
         `it typically takes a shift of two or more time zones to notice.`,
   )
@@ -135,25 +134,6 @@ export function briefing(plan: Plan): Briefing {
         `${advancing ? 'earlier' : 'later'} rather than ${24 - magnitude} hours ` +
         `${advancing ? 'later' : 'earlier'} — because ${advancing ? 'advancing suits ' +
         'early risers' : 'delaying (staying up later) comes easier to most people'}.`,
-    )
-  }
-
-  // Flight-choice heuristic: the trip to the airport and the cabin itself are
-  // bright, active hours, so a departure that lands them in the seek-light
-  // side of the day works with the shift instead of against it. Evidence on
-  // flight timing is thin (a Burgess press interview, not a trial), so this
-  // is framed as a rule of thumb. See SCIENCE.md.
-  if (plan.days.some((d) => d.transit && d.advice.some((a) => a.kind === 'seek-light'))) {
-    tips.push(
-      advancing
-        ? `When booking, a morning departure helps if you can get one: airports and ` +
-          `cabins are bright, busy places, and on an eastward advance that stimulation ` +
-          `lands in your morning seek-light hours. Evidence on flight timing is ` +
-          `limited — treat this as a rule of thumb.`
-        : `When booking, an evening or late-night departure helps if you can get one: ` +
-          `airports and cabins are bright, busy places, and on a westward delay that ` +
-          `stimulation lands in your evening seek-light hours. Evidence on flight ` +
-          `timing is limited — treat this as a rule of thumb.`,
     )
   }
 

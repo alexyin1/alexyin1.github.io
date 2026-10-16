@@ -22,23 +22,6 @@ const eastbound: Trip = {
   destinationLabel: 'Los Angeles',
 }
 
-describe('flight-timing rule of thumb', () => {
-  it('suggests evening departures on delays and morning on advances', () => {
-    const delayTips = briefing(plan(base)).tips
-    expect(delayTips.some((t) => /evening or late-night departure/.test(t))).toBe(true)
-    const advanceTips = briefing(plan(eastbound)).tips
-    expect(advanceTips.some((t) => /morning departure/.test(t))).toBe(true)
-  })
-
-  it('always labels it as a rule of thumb with limited evidence', () => {
-    for (const trip of [base, eastbound]) {
-      const tip = briefing(plan(trip)).tips.find((t) => /departure helps/.test(t))
-      expect(tip).toBeDefined()
-      expect(tip).toMatch(/Evidence on flight timing is limited/)
-    }
-  })
-})
-
 describe('needsPlan', () => {
   it('draws the line at two time zones', () => {
     expect(needsPlan(plan(base))).toBe(true) // 9h
