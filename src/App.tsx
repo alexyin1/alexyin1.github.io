@@ -6,12 +6,13 @@ import {
   formatTime,
   formatWindow,
   strategyChoice,
+  zoneOffsetLabel,
   type ClockFormat,
   type Place,
   type Trip,
 } from './lib/circadian'
 import { NO_PLAN_MESSAGE, briefing, needsPlan } from './lib/briefing'
-import { resolveFlight } from './lib/flight'
+import { estimateArrival, resolveFlight } from './lib/flight'
 import { KIND_EMOJI } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
@@ -24,14 +25,13 @@ import {
 } from './lib/airports'
 import './App.css'
 
-// Initial form values: the LAX -> Beijing demo itinerary (depart 13:00
-// Pacific, land 16:30 China time the next day -- the rollover is derived).
+// Initial form values: the LAX -> Beijing demo itinerary, departing 13:00
+// Pacific. The arrival is estimated from the route until the user edits it.
 const FORM_DEFAULTS = {
   habitualBedLocal: '23:00',
   habitualWakeLocal: '07:00',
-  travelDate: '2026-06-01',
+  departDate: '2026-06-01',
   departTimeLocal: '13:00',
-  arriveTimeLocal: '16:30',
   preTravelDays: 3,
 }
 
@@ -142,11 +142,34 @@ export default function App() {
   // Trip form state. Times are 'HH:mm', the travel date 'yyyy-MM-dd'.
   const [habitualBed, setHabitualBed] = useState(FORM_DEFAULTS.habitualBedLocal)
   const [habitualWake, setHabitualWake] = useState(FORM_DEFAULTS.habitualWakeLocal)
-  const [travelDate, setTravelDate] = useState(FORM_DEFAULTS.travelDate)
+  const [departDate, setDepartDate] = useState(FORM_DEFAULTS.departDate)
   const [departTime, setDepartTime] = useState(FORM_DEFAULTS.departTimeLocal)
-  const [arriveTime, setArriveTime] = useState(FORM_DEFAULTS.arriveTimeLocal)
+  const initialArrival = estimateArrival(
+    FORM_DEFAULTS.departDate, FORM_DEFAULTS.departTimeLocal, DEFAULT_ORIGIN, DEFAULT_DESTINATION,
+  )
+  const [arriveDate, setArriveDate] = useState(initialArrival?.date ?? '')
+  const [arriveTime, setArriveTime] = useState(initialArrival?.time ?? '')
+  // Arrival follows a typical direct-flight estimate until the user types
+  // their own; picking a different airport hands it back to the estimate.
+  const [arrivalManual, setArrivalManual] = useState(false)
+  useEffect(() => {
+    setArrivalManual(false)
+  }, [origin, destination])
+  useEffect(() => {
+    if (arrivalManual) return
+    const est = estimateArrival(departDate, departTime, origin, destination)
+    if (est) {
+      setArriveDate(est.date)
+      setArriveTime(est.time)
+    }
+  }, [arrivalManual, departDate, departTime, origin, destination])
 
-  const flight = resolveFlight(travelDate, departTime, origin.tz, arriveTime, destination.tz)
+  const flight = resolveFlight(
+    departDate, departTime, origin.tz, arriveDate, arriveTime, destination.tz,
+  )
+  // Zone offsets shown under each airport, at the moment the traveler is there.
+  const departInstant = 'error' in flight ? new Date() : flight.departUtc
+  const arriveInstant = 'error' in flight ? new Date() : flight.arriveUtc
   const flightError = 'error' in flight ? flight.error : null
   const sleepError =
     !habitualBed || !habitualWake ? 'Enter your usual bedtime and wake time.' : null
@@ -268,28 +291,43 @@ export default function App() {
       </header>
 
       <div className="route-form">
-        <AirportInput id="origin" label="From" airports={airports}
-          selected={origin} onSelect={setOrigin} />
-        <AirportInput id="destination" label="To" airports={airports}
-          selected={destination} onSelect={setDestination} />
+        <div className="leg">
+          <AirportInput id="origin" label="From" airports={airports}
+            selected={origin} onSelect={setOrigin} />
+          <p className="leg-zone">
+            {origin.city || origin.name} · {origin.tz} ({zoneOffsetLabel(origin.tz, departInstant)})
+          </p>
+          <div className="field">
+            <label htmlFor="departdate">Departure <span className="muted">({origin.iata} local)</span></label>
+            <div className="when">
+              <input id="departdate" type="date" value={departDate}
+                onChange={(e) => setDepartDate(e.target.value)} />
+              <input id="departtime" type="time" aria-label="Departure time" value={departTime}
+                onChange={(e) => setDepartTime(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <div className="leg">
+          <AirportInput id="destination" label="To" airports={airports}
+            selected={destination} onSelect={setDestination} />
+          <p className="leg-zone">
+            {destination.city || destination.name} · {destination.tz} ({zoneOffsetLabel(destination.tz, arriveInstant)})
+          </p>
+          <div className="field">
+            <label htmlFor="arrivedate">
+              Arrival <span className="muted">({destination.iata} local{arrivalManual ? '' : ', estimated for a direct flight'})</span>
+            </label>
+            <div className="when">
+              <input id="arrivedate" type="date" value={arriveDate}
+                onChange={(e) => { setArrivalManual(true); setArriveDate(e.target.value) }} />
+              <input id="arrivetime" type="time" aria-label="Arrival time" value={arriveTime}
+                onChange={(e) => { setArrivalManual(true); setArriveTime(e.target.value) }} />
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="trip-form">
-        <div className="field">
-          <label htmlFor="traveldate">Travel day</label>
-          <input id="traveldate" type="date" value={travelDate}
-            onChange={(e) => setTravelDate(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="departtime">Departure ({origin.iata} local)</label>
-          <input id="departtime" type="time" value={departTime}
-            onChange={(e) => setDepartTime(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="arrivetime">Arrival ({destination.iata} local)</label>
-          <input id="arrivetime" type="time" value={arriveTime}
-            onChange={(e) => setArriveTime(e.target.value)} />
-        </div>
         <div className="field">
           <label htmlFor="bedtime">Usual bedtime</label>
           <input id="bedtime" type="time" value={habitualBed}
@@ -301,25 +339,7 @@ export default function App() {
             onChange={(e) => setHabitualWake(e.target.value)} />
         </div>
       </div>
-      {!formError && !('error' in flight) && (
-        <p className="flight-note">
-          Lands {flight.arriveLocal.toFormat('EEE yyyy-MM-dd')} at{' '}
-          {formatTime(flight.arriveUtc, destination.tz, clock)} {destination.iata} time
-          {flight.arriveLocal.toISODate()! > travelDate
-            ? ' — the day after departure'
-            : flight.arriveLocal.toISODate()! < travelDate
-              ? ' — the day before departure (you cross the date line)'
-              : ''}
-          .
-        </p>
-      )}
       {formError && <p className="form-error">{formError}</p>}
-
-      {result && (
-        <p className="route">
-          <PlaceTag place={result.origin} /> → <PlaceTag place={result.destination} />
-        </p>
-      )}
 
       <div className="zones-off">
         <label htmlFor="zonesoff">

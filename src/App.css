@@ -31,8 +31,6 @@ h1 { font-size: 1.6rem; margin: 0; }
 .clock-toggle button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
 .clock-toggle button.active { background: #333; border-color: #333; color: #fff; }
 
-.route { margin: 0.75rem 0 1.25rem; }
-
 .briefing {
   margin-top: 0;
   padding: 1rem 1.25rem;
@@ -148,7 +146,6 @@ li {
 .trip-form .field { display: flex; flex-direction: column; }
 .trip-form label { font-size: 0.85rem; color: #777; margin-bottom: 0.2rem; }
 .trip-form input { font: inherit; padding: 0.25rem 0.4rem; }
-.flight-note { margin: 0.35rem 0 0; font-size: 0.85rem; color: #777; }
 .form-error { margin: 0.35rem 0 0; color: #b4232a; }
 .zones-off { margin: 0.75rem 0 0.25rem; }
 .zones-off label { display: block; margin-bottom: 0.25rem; }
@@ -326,13 +323,20 @@ footer {
 /* --- Airport inputs ---------------------------------------------------- */
 
 .route-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 2rem;
   margin: 1rem 0 0.25rem;
 }
+.leg { display: flex; flex-direction: column; min-width: 0; }
+.leg-zone { margin: 0.3rem 0 0.75rem; font-size: 0.85rem; color: #777; }
+.leg .field { display: flex; flex-direction: column; }
+.leg .field label { font-size: 0.85rem; color: #777; margin-bottom: 0.2rem; }
+.leg .field input { font: inherit; padding: 0.25rem 0.4rem; }
+.leg .when { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.muted { font-weight: normal; color: #999; }
 
-.airport-input { display: flex; align-items: center; gap: 0.5rem; }
+.airport-input { display: flex; flex-direction: column; gap: 0.2rem; }
 .airport-input label { font-size: 0.9rem; color: #555; font-weight: 600; }
 
 .airport-input input {
@@ -341,13 +345,13 @@ footer {
   padding: 0.35rem 0.6rem;
   border: 1px solid #ccc;
   border-radius: 4px;
-  min-width: 16rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .airport-input input:focus { outline: 2px solid #4a5aa8; border-color: #4a5aa8; }
 .airport-input input:disabled { background: #f5f5f5; }
 
 @media (max-width: 42rem) {
-  .airport-input { flex: 1 1 100%; }
-  .airport-input input { flex: 1; min-width: 0; }
+  .route-form { grid-template-columns: 1fr; }
 }
