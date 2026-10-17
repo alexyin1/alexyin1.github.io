@@ -634,7 +634,10 @@ export function plan(trip: Trip): Plan {
     // The day closes with the night's sleep, which runs into tomorrow.
     add('sleep', bedAt, nextWake, 'Target sleep window.')
 
-    advice.sort((a, b) => a.start.getTime() - b.start.getTime())
+    advice.sort(
+      (a, b) =>
+        a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime(),
+    )
 
     // The departure day is shown in both endpoint clocks, since the traveler
     // wakes in one zone and goes to bed in the other.
@@ -671,7 +674,10 @@ export function plan(trip: Trip): Plan {
 
   const timeline = days
     .flatMap((d) => d.advice)
-    .sort((a, b) => a.start.getTime() - b.start.getTime())
+    .sort(
+      (a, b) =>
+        a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime(),
+    )
 
   return {
     shiftHours,

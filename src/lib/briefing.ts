@@ -140,7 +140,7 @@ export function briefing(plan: Plan): Briefing {
   // Meal timing sets the body's peripheral clocks even though it does not
   // move the central one (Wehrens 2017), hence: eat on the new schedule.
   tips.push(
-    'Try to eat breakfast after rising and dinner at least 3 hours before ' +
+    'Try to eat breakfast after waking up and dinner at least 3 hours before ' +
       'sleeping — meal timing helps the rest of your body fall in line with ' +
       'the new clock.',
   )
@@ -159,7 +159,7 @@ export function briefing(plan: Plan): Briefing {
   tips.push(
     'These shift rates are estimates — how fast your clock actually moves ' +
       'varies from person to person and with the light you really get. Treat ' +
-      'the schedule as a target, not a guarantee.',
+      'this schedule as a target, not a guarantee.',
   )
 
   if (plan.daysToAdjust >= PARAMS.maxPlanDays - 1) {

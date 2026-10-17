@@ -592,6 +592,28 @@ describe('plan: sleep windows', () => {
 })
 
 describe('plan: flight overlap and structure', () => {
+  it('breaks ties on equal start times with the earlier end', () => {
+    // Morning exercise and the morning seek-light window both start at wake
+    // on an advance. The shorter one reads first.
+    const p = plan(eastward)
+    for (const day of p.days) {
+      for (let i = 1; i < day.advice.length; i++) {
+        const prev = day.advice[i - 1]
+        const cur = day.advice[i]
+        expect(prev.start.getTime()).toBeLessThanOrEqual(cur.start.getTime())
+        if (prev.start.getTime() === cur.start.getTime()) {
+          expect(prev.end.getTime()).toBeLessThanOrEqual(cur.end.getTime())
+        }
+      }
+    }
+    const day0 = p.days[0].advice
+    const ex = day0.findIndex((a) => a.kind === 'exercise')
+    const light = day0.findIndex((a) => a.kind === 'seek-light')
+    expect(ex).toBeGreaterThanOrEqual(0)
+    expect(day0[ex].start.getTime()).toBe(day0[light].start.getTime())
+    expect(ex).toBeLessThan(light)
+  })
+
   it('flags advice overlapping the flight', () => {
     const p = plan(eastward)
     const flagged = p.timeline.filter((a) => a.inFlight)

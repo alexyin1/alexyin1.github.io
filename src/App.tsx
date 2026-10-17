@@ -13,7 +13,8 @@ import {
 } from './lib/circadian'
 import { NO_PLAN_MESSAGE, briefing, needsPlan } from './lib/briefing'
 import { estimateArrival, resolveFlight } from './lib/flight'
-import { KIND_EMOJI } from './lib/visual'
+import { formatClockText, parseClockText } from './lib/clocktext'
+import { KIND_EMOJI, KIND_LABEL } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
 import {
@@ -97,6 +98,47 @@ function AirportInput(props: {
   )
 }
 
+/**
+ * A time field that follows the page's clock toggle. A native time input
+ * takes its 12h/24h rendering from the browser locale with no way to
+ * override it, so this is a text input over the same 'HH:mm' value,
+ * accepting either spelling on the way in.
+ */
+function TimeInput(props: {
+  id: string
+  value: string
+  onChange: (hhmm: string) => void
+  clock: ClockFormat
+  ariaLabel?: string
+}) {
+  const { id, value, onChange, clock } = props
+  // While the field has focus the typed draft is authoritative; the rest of
+  // the time the text is derived from the value, which is how the clock
+  // toggle reaches it.
+  const [draft, setDraft] = useState<string | null>(null)
+  const text = draft ?? formatClockText(value, clock)
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      aria-label={props.ariaLabel}
+      placeholder={clock === '12h' ? 'h:mm AM' : 'HH:mm'}
+      value={text}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        const parsed = parseClockText(e.target.value)
+        if (parsed) onChange(parsed)
+      }}
+      onBlur={() => {
+        const parsed = parseClockText(text)
+        if (parsed) onChange(parsed)
+        setDraft(null)
+      }}
+    />
+  )
+}
+
 const CLOCK_KEY = 'jetlag.clock'
 
 function useClockFormat(): [ClockFormat, (c: ClockFormat) => void] {
@@ -138,6 +180,10 @@ export default function App() {
   // How far off the regular bedtime the plan may schedule sleep, both for the
   // pre-flight shift cap and the post-departure snap toward local time.
   const [zonesOff, setZonesOff] = useState<number>(PARAMS.zonesOffRegular)
+  // Preparation days track the nightly shift cap: the default 3, but a
+  // traveler who will only move their bedtime 1-2h has correspondingly
+  // fewer useful days to prepare in.
+  const preTravelDays = Math.min(FORM_DEFAULTS.preTravelDays, Math.round(zonesOff))
 
   // Trip form state. Times are 'HH:mm', the travel date 'yyyy-MM-dd'.
   const [habitualBed, setHabitualBed] = useState(FORM_DEFAULTS.habitualBedLocal)
@@ -187,7 +233,7 @@ export default function App() {
           arriveUtc: flight.arriveUtc,
           habitualBedLocal: habitualBed,
           habitualWakeLocal: habitualWake,
-          preTravelDays: FORM_DEFAULTS.preTravelDays,
+          preTravelDays,
           zonesOffRegular: zonesOff,
         }
   // 8-12h eastward is the genuine judgment call: advance (shorter) or delay
@@ -302,8 +348,8 @@ export default function App() {
             <div className="when">
               <input id="departdate" type="date" value={departDate}
                 onChange={(e) => setDepartDate(e.target.value)} />
-              <input id="departtime" type="time" aria-label="Departure time" value={departTime}
-                onChange={(e) => setDepartTime(e.target.value)} />
+              <TimeInput id="departtime" ariaLabel="Departure time" clock={clock}
+                value={departTime} onChange={setDepartTime} />
             </div>
           </div>
         </div>
@@ -320,8 +366,9 @@ export default function App() {
             <div className="when">
               <input id="arrivedate" type="date" value={arriveDate}
                 onChange={(e) => { setArrivalManual(true); setArriveDate(e.target.value) }} />
-              <input id="arrivetime" type="time" aria-label="Arrival time" value={arriveTime}
-                onChange={(e) => { setArrivalManual(true); setArriveTime(e.target.value) }} />
+              <TimeInput id="arrivetime" ariaLabel="Arrival time" clock={clock}
+                value={arriveTime}
+                onChange={(v) => { setArrivalManual(true); setArriveTime(v) }} />
             </div>
           </div>
         </div>
@@ -330,13 +377,13 @@ export default function App() {
       <div className="trip-form">
         <div className="field">
           <label htmlFor="bedtime">Usual bedtime</label>
-          <input id="bedtime" type="time" value={habitualBed}
-            onChange={(e) => setHabitualBed(e.target.value)} />
+          <TimeInput id="bedtime" clock={clock} value={habitualBed}
+            onChange={setHabitualBed} />
         </div>
         <div className="field">
           <label htmlFor="waketime">Usual wake time</label>
-          <input id="waketime" type="time" value={habitualWake}
-            onChange={(e) => setHabitualWake(e.target.value)} />
+          <TimeInput id="waketime" clock={clock} value={habitualWake}
+            onChange={setHabitualWake} />
         </div>
       </div>
       {formError && <p className="form-error">{formError}</p>}
@@ -350,7 +397,7 @@ export default function App() {
           type="range"
           min={1}
           max={5}
-          step={0.5}
+          step={1}
           value={zonesOff}
           onChange={(e) => setZonesOff(Number(e.target.value))}
         />
@@ -358,6 +405,8 @@ export default function App() {
           Caps how far the plan shifts your bedtime while you are still at home,
           and how far off the regular local bedtime your first destination
           nights start before easing onto it. Most people manage about 3 hours.
+          It also sets how many days of preparation the plan uses before you
+          fly: {preTravelDays} {preTravelDays === 1 ? 'day' : 'days'}.
         </p>
       </div>
 
@@ -513,12 +562,9 @@ export default function App() {
                 </span>
                 <span className="kind">
                   <span className="k-emoji" aria-hidden="true">{KIND_EMOJI[a.kind]}</span>{' '}
-                  {a.kind.replace('-', ' ')}
+                  {KIND_LABEL[a.kind]}
                 </span>
-                <span className="note">
-                  {a.note}
-                  {a.inFlight ? ' (in flight)' : ''}
-                </span>
+                {a.inFlight && <span className="note">(in flight)</span>}
               </li>
             ))}
           </ul>

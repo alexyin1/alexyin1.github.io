@@ -267,6 +267,19 @@ interface DayGeom {
   remaining: number
 }
 
+/**
+ * Display names for advice kinds: sentence case, and 'meal' spelled out as
+ * the breakfast it actually schedules.
+ */
+export const KIND_LABEL: Record<AdviceKind, string> = {
+  sleep: 'Sleep',
+  'seek-light': 'Seek light',
+  'avoid-light': 'Avoid light',
+  melatonin: 'Melatonin',
+  exercise: 'Exercise',
+  meal: 'Eat breakfast',
+}
+
 const LIGHT_KINDS: AdviceKind[] = ['seek-light', 'avoid-light']
 
 function dayGeometry(day: PlanDay, axisZone: string): DayGeom {

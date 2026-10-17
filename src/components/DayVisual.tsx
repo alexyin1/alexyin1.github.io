@@ -1,6 +1,7 @@
 import type { ClockFormat, Plan } from '../lib/circadian'
 import {
   KIND_EMOJI,
+  KIND_LABEL,
   type Seg,
   type VisualFrame,
   axisTicks,
@@ -179,8 +180,7 @@ export default function DayVisual(props: Props) {
           .map((k) => (
             <li key={k}>
               <span className="lg-emoji" aria-hidden="true">{KIND_EMOJI[k]}</span>
-              {k === 'seek-light' ? 'Seek light' : k === 'avoid-light' ? 'Avoid light'
-                : k[0].toUpperCase() + k.slice(1)}
+              {KIND_LABEL[k]}
             </li>
           ))}
         <li><span className="lg-swatch curve-goal" /> Target rhythm</li>

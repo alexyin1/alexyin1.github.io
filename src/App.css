@@ -173,7 +173,7 @@ li {
   font-size: 0.9rem;
   border-radius: 0 4px 4px 0;
 }
-.kind { text-transform: capitalize; font-weight: 600; }
+.kind { font-weight: 600; }
 .note { color: #666; }
 
 li.sleep { border-color: #4a5aa8; }
