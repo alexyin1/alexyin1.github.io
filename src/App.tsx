@@ -6,15 +6,18 @@ import {
   formatTime,
   formatWindow,
   strategyChoice,
+  windowParts,
   zoneOffsetLabel,
+  type Advice,
   type ClockFormat,
   type Place,
+  type TimeParts,
   type Trip,
 } from './lib/circadian'
 import { NO_PLAN_MESSAGE, briefing, needsPlan } from './lib/briefing'
 import { estimateArrival, resolveFlight } from './lib/flight'
 import { formatClockText, parseClockText } from './lib/clocktext'
-import { KIND_EMOJI, KIND_LABEL } from './lib/visual'
+import { KIND_EMOJI, KIND_LABEL, SPAN_HINT } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
 import {
@@ -157,6 +160,54 @@ function PlaceTag({ place }: { place: Place }) {
       {place.label}{' '}
       <span className="zone">
         · {place.zone} ({place.offsetLabel})
+      </span>
+    </span>
+  )
+}
+
+/**
+ * One clock time. The hour and the meridiem are fixed-width, so '9:00 PM'
+ * and '12:00 AM' put their colons and their AM/PM in the same place and a
+ * column of times reads straight down.
+ */
+function ClockTime({ t }: { t: TimeParts }) {
+  return (
+    <>
+      <span className="w-h">{t.hour}</span>:{t.minute}
+      {t.meridiem && <span className="w-ap">{t.meridiem}</span>}
+    </>
+  )
+}
+
+/**
+ * An advice window as a row of aligned cells: weekday, start, dash, end,
+ * next-day marker. Point advice -- melatonin, breakfast -- is a single time,
+ * so everything after the start is simply absent.
+ */
+function WindowLine(props: {
+  advice: Advice
+  clock: ClockFormat
+  zone?: string
+  /** Trailing label, used to name the zone on the alternate transit line. */
+  place?: string
+  className: string
+}) {
+  const p = windowParts(props.advice, props.clock, props.zone)
+  return (
+    <span className={props.className}>
+      {/* Screen readers get the window as one phrase; the cells that make it
+          line up on screen would otherwise be read out piece by piece. */}
+      <span className="sr-only">
+        {formatWindow(props.advice, props.clock, props.zone)}
+        {props.place ? ` ${props.place}` : ''}
+      </span>
+      <span className="wcells" aria-hidden="true">
+        <span className="w-day">{p.day}</span>
+        <span className="w-time"><ClockTime t={p.start} /></span>
+        <span className="w-dash">{p.end ? '–' : ''}</span>
+        <span className="w-time">{p.end && <ClockTime t={p.end} />}</span>
+        <span className="w-next">{p.endsNextDay ? '+1' : ''}</span>
+        {props.place && <span className="w-place">{props.place}</span>}
       </span>
     </span>
   )
@@ -318,7 +369,9 @@ export default function App() {
     : ''
 
   return (
-    <main>
+    // The itinerary's time column is sized for the clock in use: 'Sat 9:00
+    // PM–12:00 AM +1' needs noticeably more room than 'Sat 21:00–00:00 +1'.
+    <main data-clock={clock}>
       <header className="page-head">
         <h1>Jet Lag Planner</h1>
         <div className="clock-toggle" role="group" aria-label="Clock format">
@@ -553,18 +606,29 @@ export default function App() {
             {day.advice.map((a, i) => (
               <li key={i} className={a.kind}>
                 <span className="window">
-                  {formatWindow(a, clock)}
+                  <WindowLine advice={a} clock={clock} className="wline" />
                   {day.otherPlace && (
-                    <span className="alt-window">
-                      {formatWindow(a, clock, day.otherPlace.zone)} {day.otherPlace.label}
-                    </span>
+                    <WindowLine
+                      advice={a}
+                      clock={clock}
+                      zone={day.otherPlace.zone}
+                      place={day.otherPlace.label}
+                      className="wline alt-window"
+                    />
                   )}
                 </span>
                 <span className="kind">
                   <span className="k-emoji" aria-hidden="true">{KIND_EMOJI[a.kind]}</span>{' '}
                   {KIND_LABEL[a.kind]}
                 </span>
-                {a.inFlight && <span className="note">(in flight)</span>}
+                <span className="note">
+                  {SPAN_HINT[a.span]}
+                  {a.inFlight && (
+                    <span className="in-flight">
+                      {SPAN_HINT[a.span] && ' · '}in flight
+                    </span>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

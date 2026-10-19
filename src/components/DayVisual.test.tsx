@@ -135,6 +135,17 @@ describe('DayVisual', () => {
     expect(advance).toContain('Melatonin')
   })
 
+  it('rules the exercise window, which has a range, but not the point advice', () => {
+    // Melatonin and the first meal happen at a time; exercise is a slot to
+    // fit a session into, so only it gets a range rule under its marker.
+    const html = render(trips[1], 1)
+    expect(html).toContain('💊')
+    expect(html).toContain('🏃')
+    const rules = (html.match(/height="3"/g) ?? []).length
+    expect(rules).toBe(1)
+    expect(html).toContain('fill="#c2553f"')
+  })
+
   it('says CBTmin has arrived on the final day', () => {
     const p = plan(trips[0])
     expect(render(trips[0], p.days.length)).toContain('has arrived on destination time')

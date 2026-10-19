@@ -3,6 +3,18 @@ main {
   margin: 0 auto;
   padding: 1.5rem 1rem 4rem;
   font: 16px/1.5 system-ui, sans-serif;
+  /* Itinerary time column: --timecol holds one clock time, --wincol the
+     whole window plus the transit day's trailing zone label. Both are sized
+     for the active clock format so nothing wraps and nothing is left to
+     max-content, which would let a row without an end time pull its
+     neighbours out of line. */
+  --timecol: 2.9em;
+  --wincol: 12rem;
+}
+
+main[data-clock='12h'] {
+  --timecol: 4.8em;
+  --wincol: 16rem;
 }
 
 .page-head {
@@ -101,8 +113,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 
 li {
   display: grid;
-  /* Wide enough for the 12h format, e.g. "Mon 11:00 PM–7:00 AM". */
-  grid-template-columns: 12rem 7rem 1fr;
+  grid-template-columns: var(--wincol) 9rem 1fr;
   gap: 0.5rem;
   padding: 0.4rem 0.5rem;
   border-left: 4px solid #ccc;
@@ -112,17 +123,45 @@ li {
 /* Mobile: stack the columns rather than squeezing them. */
 @media (max-width: 42rem) {
   li { grid-template-columns: 1fr; gap: 0.1rem; }
-  .note { color: #666; font-size: 0.9rem; }
+  .note { font-size: 0.85rem; }
   .place { white-space: normal; }
   .span { margin-left: 0; }
 }
 
 .span { color: #888; font-weight: normal; font-size: 0.85em; margin-left: auto; }
 
-.window { font-variant-numeric: tabular-nums; color: #333; }
+.window { color: #333; }
+
+/* One window line laid out in cells, so weekday, start, end and the '+1'
+   marker sit in the same place on every row. Inside a time cell the hour and
+   the meridiem are fixed-width too, which is what keeps the colons aligned
+   between a one-digit hour and a two-digit one. */
+.wline { display: block; }
+
+.wcells {
+  display: grid;
+  grid-template-columns: 2.4em var(--timecol) 0.75em var(--timecol) 1.7em auto;
+  align-items: baseline;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.w-h { display: inline-block; min-width: 2ch; text-align: right; }
+.w-ap { display: inline-block; min-width: 2.9ch; margin-left: 0.4ch; }
+.w-dash { text-align: center; }
+.w-next { color: #888; font-size: 0.85em; padding-left: 0.3em; }
+.w-place { color: inherit; padding-left: 0.2em; }
 
 .alt-window {
-  display: block;
   color: #999;
   font-size: 0.85em;
 }
@@ -174,7 +213,11 @@ li {
   border-radius: 0 4px 4px 0;
 }
 .kind { font-weight: 600; }
-.note { color: #666; }
+
+/* How to read the window, plus the in-flight flag: deliberately quiet, since
+   it qualifies the row rather than adding to it. */
+.note { color: #999; font-size: 0.85em; }
+.note .in-flight { color: #a06a00; }
 
 li.sleep { border-color: #4a5aa8; }
 li.seek-light { border-color: #e8a317; }

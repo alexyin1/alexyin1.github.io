@@ -104,6 +104,27 @@ export type AdviceKind =
   | 'exercise'
   | 'meal'
 
+/**
+ * How a piece of advice occupies its times. Two ranges that print the same
+ * can mean quite different things -- light has to be on you for the whole
+ * window to do its work, while a run only has to land somewhere inside one --
+ * so the distinction is carried in the model rather than left to the reader.
+ *
+ *   'throughout' -- holds for the entire span (sleep, both light windows).
+ *   'within'     -- do it once, anywhere inside the span (exercise).
+ *   'point'      -- a single moment; start and end are equal (melatonin, meal).
+ */
+export type AdviceSpan = 'throughout' | 'within' | 'point'
+
+export const ADVICE_SPAN: Record<AdviceKind, AdviceSpan> = {
+  sleep: 'throughout',
+  'seek-light': 'throughout',
+  'avoid-light': 'throughout',
+  melatonin: 'point',
+  exercise: 'within',
+  meal: 'point',
+}
+
 export interface Trip {
   /** IANA zone, e.g. 'America/Los_Angeles'. */
   originZone: string
@@ -138,7 +159,10 @@ export interface Trip {
 
 export interface Advice {
   kind: AdviceKind
+  /** How to read the times below; always ADVICE_SPAN[kind]. */
+  span: AdviceSpan
   start: Date
+  /** Equal to `start` when `span` is 'point'. */
   end: Date
   /** IANA zone this window should be displayed in. */
   zone: string
@@ -543,16 +567,32 @@ export function plan(trip: Trip): Plan {
       : makePlace(trip.originZone, trip.originLabel, wakeAt.toJSDate())
 
     const advice: Advice[] = []
-    const add = (kind: AdviceKind, start: DateTime, end: DateTime, note: string) => {
-      if (end <= start) return
+    const push = (kind: AdviceKind, start: DateTime, end: DateTime, note: string) => {
+      const s = start.toJSDate()
+      const e = end.toJSDate()
       advice.push({
         kind,
-        start: start.toJSDate(),
-        end: end.toJSDate(),
+        span: ADVICE_SPAN[kind],
+        start: s,
+        end: e,
         zone,
-        inFlight: start.toJSDate() < trip.arriveUtc && end.toJSDate() > trip.departUtc,
+        // A point event is in flight when the moment itself falls between
+        // wheels-up and wheels-down; a window, when it overlaps that span.
+        inFlight:
+          s.getTime() === e.getTime()
+            ? s >= trip.departUtc && s <= trip.arriveUtc
+            : s < trip.arriveUtc && e > trip.departUtc,
         note,
       })
+    }
+    /** A window: the advice applies across the span it covers. */
+    const add = (kind: AdviceKind, start: DateTime, end: DateTime, note: string) => {
+      if (end <= start) return
+      push(kind, start, end, note)
+    }
+    /** A moment: melatonin and the first meal are taken at a time, not over one. */
+    const addAt = (kind: AdviceKind, at: DateTime, note: string) => {
+      push(kind, at, at, note)
     }
 
     // Once the shift is complete there is nothing left to push: settled days
@@ -584,8 +624,7 @@ export function plan(trip: Trip): Plan {
         // E&B advance protocol: 0.5 mg about 5h before bedtime (the low-dose
         // melatonin PRC's advance region; Revell 2006 showed 0.5 mg matches
         // 3 mg). The dose hour moves earlier with the shifting bedtime.
-        const mel = bedAt.minus(hours(5))
-        add('melatonin', mel, mel.plus(hours(1)), 'Low dose, 0.5 mg.')
+        addAt('melatonin', bedAt.minus(hours(5)), 'Low dose, 0.5 mg.')
       }
       // No melatonin on delays: E&B leave it out of westward plans — no
       // evidence it adds anything to well-timed light.
@@ -629,7 +668,7 @@ export function plan(trip: Trip): Plan {
     // (Wehrens 2017), so eating on the new schedule helps the body fall in
     // line even though it does not move the central clock. The
     // dinner-before-bed rule is a standing tip, not a slot.
-    add('meal', wakeAt.plus(hours(0.5)), wakeAt.plus(hours(1.5)), 'First meal.')
+    addAt('meal', wakeAt.plus(hours(0.5)), 'First meal.')
 
     // The day closes with the night's sleep, which runs into tomorrow.
     add('sleep', bedAt, nextWake, 'Target sleep window.')
@@ -733,22 +772,69 @@ export function formatTime(at: Date, zone: string, clock: ClockFormat = '24h'): 
 }
 
 /**
- * Format an advice window for display. A window that ends on a later local
- * date -- a sleep window, usually -- is marked '+1', since otherwise
+ * A clock time split into the pieces the itinerary lays out in columns, so
+ * the colons and meridiems line up down the page instead of drifting with
+ * the digit count. `meridiem` is absent on the 24h clock.
+ */
+export interface TimeParts {
+  hour: string
+  minute: string
+  meridiem?: string
+}
+
+/** An advice window broken into its displayable pieces. */
+export interface WindowParts {
+  /** Weekday the window starts on, e.g. 'Sat'. */
+  day: string
+  start: TimeParts
+  /** Null for a point in time, where there is only a start. */
+  end: TimeParts | null
+  /** True when the end falls on a later local date -- rendered as '+1'. */
+  endsNextDay: boolean
+}
+
+function timeParts(at: Date, zone: string, clock: ClockFormat): TimeParts {
+  const dt = DateTime.fromJSDate(at, { zone })
+  return clock === '12h'
+    ? { hour: dt.toFormat('h'), minute: dt.toFormat('mm'), meridiem: dt.toFormat('a') }
+    : { hour: dt.toFormat('HH'), minute: dt.toFormat('mm') }
+}
+
+/**
+ * Break an advice window into display pieces. A window that ends on a later
+ * local date -- a sleep window, usually -- is flagged, since otherwise
  * 'Mon 23:00–07:00' reads as going backwards. `zoneOverride` renders the same
  * instants in another zone, used to show transit days in both endpoint clocks.
  */
+export function windowParts(
+  a: Advice,
+  clock: ClockFormat = '24h',
+  zoneOverride?: string,
+): WindowParts {
+  const zone = zoneOverride ?? a.zone
+  const s = DateTime.fromJSDate(a.start, { zone })
+  const e = DateTime.fromJSDate(a.end, { zone })
+  const isPoint = a.start.getTime() === a.end.getTime()
+  return {
+    day: s.toFormat('EEE'),
+    start: timeParts(a.start, zone, clock),
+    end: isPoint ? null : timeParts(a.end, zone, clock),
+    endsNextDay: !isPoint && !e.hasSame(s, 'day'),
+  }
+}
+
+/** The same window as a single string, e.g. 'Mon 23:00–07:00 +1'. */
 export function formatWindow(
   a: Advice,
   clock: ClockFormat = '24h',
   zoneOverride?: string,
 ): string {
-  const zone = zoneOverride ?? a.zone
-  const s = DateTime.fromJSDate(a.start, { zone })
-  const e = DateTime.fromJSDate(a.end, { zone })
-  const crossesMidnight = !e.hasSame(s, 'day')
+  const p = windowParts(a, clock, zoneOverride)
+  const time = (t: TimeParts) =>
+    `${t.hour}:${t.minute}${t.meridiem ? ` ${t.meridiem}` : ''}`
   return (
-    `${s.toFormat('EEE')} ${formatTime(a.start, zone, clock)}–` +
-    `${formatTime(a.end, zone, clock)}${crossesMidnight ? ' +1' : ''}`
+    `${p.day} ${time(p.start)}` +
+    (p.end ? `–${time(p.end)}` : '') +
+    (p.endsNextDay ? ' +1' : '')
   )
 }

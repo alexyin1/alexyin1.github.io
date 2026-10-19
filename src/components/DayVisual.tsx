@@ -42,6 +42,7 @@ const H = AXIS_Y + 46
 const ADVICE_COLORS: Record<string, string> = {
   'seek-light': '#e8a317',
   'avoid-light': '#5b4a8a',
+  exercise: '#c2553f',
 }
 
 interface Props {
@@ -118,8 +119,18 @@ export default function DayVisual(props: Props) {
             {KIND_EMOJI[w.kind]}
           </text>
         ))}
+        {/* Point advice sits above the light bars. Exercise is a point on the
+            chart but has a range to fit it into, so that range is drawn as a
+            thin rule under its marker; melatonin and the first meal have no
+            range and yield no segments. */}
+        {frame.points.filter((w) => w.opacity > 0.01).flatMap((w, i) =>
+          rects(w.segs).map((r, j) => (
+            <rect key={`pr${i}-${j}`} x={r.x} y={ROW_ADVICE - 7} width={r.width} height={3}
+              rx={1.5} fill={ADVICE_COLORS[w.kind]} opacity={0.7 * w.opacity} />
+          )),
+        )}
         {frame.points.filter((w) => w.opacity > 0.01).map((w, i) => (
-          <text key={`pe${i}`} className="emoji" x={px(w.startF) - 8} y={ROW_ADVICE - 8}
+          <text key={`pe${i}`} className="emoji" x={px(w.startF) - 8} y={ROW_ADVICE - 11}
             opacity={w.opacity}>
             {KIND_EMOJI[w.kind]}
           </text>

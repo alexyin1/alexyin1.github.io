@@ -12,7 +12,13 @@
  */
 
 import { DateTime } from 'luxon'
-import { PARAMS, offsetHoursAt, type AdviceKind, type PlanDay } from './circadian'
+import {
+  PARAMS,
+  offsetHoursAt,
+  type AdviceKind,
+  type AdviceSpan,
+  type PlanDay,
+} from './circadian'
 import { sunTimesAt } from './sun'
 
 /** Destination local hour at the left edge of the axis. */
@@ -278,6 +284,17 @@ export const KIND_LABEL: Record<AdviceKind, string> = {
   melatonin: 'Melatonin',
   exercise: 'Exercise',
   meal: 'Eat breakfast',
+}
+
+/**
+ * How to read the times beside a recommendation. A bare range cannot say
+ * whether it is something to sustain or a slot to fit something into, so the
+ * itinerary spells it out; point advice needs no gloss, its time is the time.
+ */
+export const SPAN_HINT: Record<AdviceSpan, string> = {
+  throughout: 'the whole window',
+  within: 'any time in this window',
+  point: '',
 }
 
 const LIGHT_KINDS: AdviceKind[] = ['seek-light', 'avoid-light']

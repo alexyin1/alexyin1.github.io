@@ -3,6 +3,7 @@ import { DateTime } from 'luxon'
 import {
   type Advice,
   type Trip,
+  ADVICE_SPAN,
   PARAMS,
   computeShift,
   formatTime,
@@ -11,6 +12,7 @@ import {
   offsetHoursAt,
   plan,
   strategyChoice,
+  windowParts,
   zoneCityName,
   zoneOffsetLabel,
 } from './circadian'
@@ -624,12 +626,16 @@ describe('plan: flight overlap and structure', () => {
     }
   })
 
-  it('returns a chronologically sorted timeline with no zero-length windows', () => {
+  it('returns a chronologically sorted timeline where only point advice is zero-length', () => {
     const p = plan(eastward)
     for (let i = 1; i < p.timeline.length; i++) {
       expect(p.timeline[i].start.getTime()).toBeGreaterThanOrEqual(p.timeline[i - 1].start.getTime())
     }
-    for (const a of p.timeline) expect(a.end.getTime()).toBeGreaterThan(a.start.getTime())
+    for (const a of p.timeline) {
+      expect(a.span).toBe(ADVICE_SPAN[a.kind])
+      if (a.span === 'point') expect(a.end.getTime()).toBe(a.start.getTime())
+      else expect(a.end.getTime()).toBeGreaterThan(a.start.getTime())
+    }
   })
 
   it('covers at least one day past arrival even with no pre-travel shifting', () => {
@@ -750,6 +756,32 @@ describe('clock formatting', () => {
 
     const breakfast = p.days[0].advice.find((a) => a.kind === 'meal')!
     expect(formatWindow(breakfast)).not.toMatch(/\+1/)
+  })
+
+  it('prints point advice as one time, with no range', () => {
+    const p = plan(eastward)
+    const breakfast = firstOfKind(p.days[0].advice, 'meal')
+    // Wake is 07:00 on day 1 and the first meal sits half an hour after it.
+    expect(formatWindow(breakfast)).toBe('Fri 07:30')
+    expect(formatWindow(breakfast, '12h')).toBe('Fri 7:30 AM')
+    expect(windowParts(breakfast).end).toBeNull()
+
+    const mel = firstOfKind(p.days[0].advice, 'melatonin')
+    expect(formatWindow(mel)).toBe('Fri 17:00')
+    expect(windowParts(mel).end).toBeNull()
+  })
+
+  it('splits times into fixed cells so a column of them can be aligned', () => {
+    const p = plan(eastward)
+    const sleep = firstOfKind(p.days[0].advice, 'sleep')
+    expect(windowParts(sleep, '12h')).toEqual({
+      day: 'Fri',
+      start: { hour: '10', minute: '00', meridiem: 'PM' },
+      end: { hour: '6', minute: '00', meridiem: 'AM' },
+      endsNextDay: true,
+    })
+    // The 24h clock has no meridiem cell at all, rather than an empty one.
+    expect(windowParts(sleep).start).toEqual({ hour: '22', minute: '00' })
   })
 
   it('re-renders the same instants in another zone for transit days', () => {
