@@ -6,6 +6,17 @@ light, sleep, take melatonin and caffeine, exercise, and eat.
 
 Entirely static — all computation runs in the browser. No backend, no accounts.
 
+## Setup
+
+Requirements: Node 20 or newer (CI uses 20) and npm. Nothing else to install.
+
+```bash
+brew install node    # macOS, if Node isn't installed yet
+npm ci               # install exactly what package-lock.json pins
+npm test             # sanity check
+npm run dev          # then open http://localhost:5173
+```
+
 ## Development
 
 ```bash
