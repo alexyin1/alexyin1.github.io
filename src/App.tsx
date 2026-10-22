@@ -16,14 +16,6 @@ import {
 } from './lib/circadian'
 import { NO_PLAN_MESSAGE, briefing, needsPlan } from './lib/briefing'
 import { estimateArrival, resolveFlight } from './lib/flight'
-import {
-  autoColon,
-  clockDigits,
-  meridiemOf,
-  parseClockText,
-  withMeridiem,
-  type Meridiem,
-} from './lib/clocktext'
 import { KIND_EMOJI, KIND_LABEL, SPAN_HINT } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
@@ -120,71 +112,27 @@ function AirportInput(props: {
 }
 
 /**
- * A time field that follows the page's clock toggle. A native time input
- * takes its 12h/24h rendering from the browser locale with no way to
- * override it, so this is a text input over the same 'HH:mm' value,
- * accepting either spelling on the way in.
+ * A native time input over the same 'HH:mm' value. The browser renders its
+ * own control -- a scroll wheel with an AM/PM column on iOS, a segmented
+ * hour/minute/AM-PM field on desktop -- and picks 12h or 24h from the
+ * device's own setting rather than the page's clock toggle, which only
+ * governs how the schedule is displayed.
  */
 function TimeInput(props: {
   id: string
   value: string
   onChange: (hhmm: string) => void
-  clock: ClockFormat
   ariaLabel?: string
 }) {
-  const { id, value, onChange, clock } = props
-  // While the field has focus the typed draft is authoritative; the rest of
-  // the time the text is derived from the value, which is how the clock
-  // toggle reaches it.
-  const [draft, setDraft] = useState<string | null>(null)
-  const text = draft ?? clockDigits(value, clock)
-  // In 12h mode the field holds digits only and AM/PM is a button pair
-  // beside it: a phone's numeric keypad has no letters, so typing 'pm' is
-  // not an option there. Desktop users can still type it and it wins.
-  const meridiem = meridiemOf(value)
-  const commit = (raw: string) => {
-    const parsed = parseClockText(raw)
-    if (!parsed) return
-    const hour = Number(parsed.slice(0, 2))
-    const typedMeridiem = /[ap]m/i.test(raw)
-    const bare12h = clock === '12h' && !typedMeridiem && hour >= 1 && hour <= 12
-    onChange(bare12h ? withMeridiem(parsed, meridiem) : parsed)
-  }
   return (
-    <span className="time-field">
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        aria-label={props.ariaLabel}
-        placeholder={clock === '12h' ? 'h:mm' : 'HH:mm'}
-        value={text}
-        onChange={(e) => {
-          const next = autoColon(e.target.value, text, clock)
-          setDraft(next)
-          commit(next)
-        }}
-        onBlur={() => {
-          commit(text)
-          setDraft(null)
-        }}
-      />
-      {clock === '12h' && (
-        <span className="clock-toggle meridiem" role="group" aria-label="AM or PM">
-          {(['AM', 'PM'] as Meridiem[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={meridiem === m}
-              className={meridiem === m ? 'active' : ''}
-              onClick={() => onChange(withMeridiem(value, m))}
-            >
-              {m}
-            </button>
-          ))}
-        </span>
-      )}
-    </span>
+    <input
+      id={props.id}
+      type="time"
+      aria-label={props.ariaLabel}
+      value={props.value}
+      // An empty value is the control mid-edit; keep the last good time.
+      onChange={(e) => e.target.value && props.onChange(e.target.value)}
+    />
   )
 }
 
@@ -445,7 +393,7 @@ export default function App() {
             <div className="when">
               <input id="departdate" type="date" value={departDate}
                 onChange={(e) => setDepartDate(e.target.value)} />
-              <TimeInput id="departtime" ariaLabel="Departure time" clock={clock}
+              <TimeInput id="departtime" ariaLabel="Departure time"
                 value={departTime} onChange={setDepartTime} />
             </div>
           </div>
@@ -463,7 +411,7 @@ export default function App() {
             <div className="when">
               <input id="arrivedate" type="date" value={arriveDate}
                 onChange={(e) => { setArrivalManual(true); setArriveDate(e.target.value) }} />
-              <TimeInput id="arrivetime" ariaLabel="Arrival time" clock={clock}
+              <TimeInput id="arrivetime" ariaLabel="Arrival time"
                 value={arriveTime}
                 onChange={(v) => { setArrivalManual(true); setArriveTime(v) }} />
             </div>
@@ -474,12 +422,12 @@ export default function App() {
       <div className="trip-form">
         <div className="field">
           <label htmlFor="bedtime">Usual bedtime</label>
-          <TimeInput id="bedtime" clock={clock} value={habitualBed}
+          <TimeInput id="bedtime" value={habitualBed}
             onChange={setHabitualBed} />
         </div>
         <div className="field">
           <label htmlFor="waketime">Usual wake time</label>
-          <TimeInput id="waketime" clock={clock} value={habitualWake}
+          <TimeInput id="waketime" value={habitualWake}
             onChange={setHabitualWake} />
         </div>
       </div>
