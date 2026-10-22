@@ -26,7 +26,15 @@ main[data-clock='12h'] {
   gap: 0.75rem;
 }
 
-h1 { font-size: 1.6rem; margin: 0; }
+h1 {
+  font-size: 1.6rem;
+  margin: 0;
+  color: #4a5aa8;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.logo { width: 1.25em; height: 1.25em; flex: none; }
 
 .clock-toggle { display: flex; }
 
@@ -93,8 +101,12 @@ h1 { font-size: 1.6rem; margin: 0; }
   font-size: 1.25rem;
   border: none;
   padding: 0;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
+.itinerary-head .clock-toggle { font-size: 1rem; }
 
 .place { white-space: nowrap; font-weight: 600; }
 .zone { color: #888; font-weight: normal; font-size: 0.85em; }
@@ -385,12 +397,12 @@ footer {
 .muted { font-weight: normal; color: #999; }
 
 .airport-input { display: flex; flex-direction: column; gap: 0.2rem; }
-.airport-input label { font-size: 1.05rem; color: #333; font-weight: 700; }
+.airport-input label { font-size: 1.05rem; color: #333; font-weight: 600; }
 
 .airport-input input {
   font: inherit;
   font-size: 1.15rem;
-  font-weight: 600;
+  font-weight: 500;
   padding: 0.45rem 0.7rem;
   border: 1px solid #ccc;
   border-radius: 4px;

@@ -76,11 +76,11 @@ export function briefing(plan: Plan): Briefing {
   tips.push(
     advancing
       ? 'Bright light in the morning and a dim evening pull your clock earlier. ' +
-        'Getting this backwards will push it the wrong way, so the light timing ' +
-        'matters more than anything else here.'
-      : 'A dim morning and bright light in the evening push your clock later. ' +
-        'Getting this backwards will pull it the wrong way, so the light timing ' +
-        'matters more than anything else here.',
+        'Dim mornings and bright evenings have the opposite effect. Timed light ' +
+        'exposure/avoidance is essential to beating jet lag.'
+      : 'A dim morning and bright evening push your clock later. Bright mornings ' +
+        'and dim evenings have the opposite effect. Timed light exposure/avoidance ' +
+        'is essential to beating jet lag.',
   )
 
   // Why the schedule looks gentle at first and then speeds up. There is
@@ -115,11 +115,9 @@ export function briefing(plan: Plan): Briefing {
   ).length
   tips.push(
     roughDays > 0
-      ? `Prepare for about ${plural(roughDays, 'day')} of jet lag discomfort — people tend ` +
-        `to experience jet lag when the internal clock differs by two or more ` +
-        `time zones. Your sleep times move with your body clock, so the first ` +
-        `nights at the destination sit off the local norm and settle onto it as ` +
-        `the shift completes.`
+      ? `Prepare for about ${plural(roughDays, 'day')} of jet lag discomfort — a ` +
+        `difference of two or more time zones typically causes jet lag. The first ` +
+        `few nights at the destination are typically the most intense.`
       : `Your clock arrives nearly aligned, so expect little jet lag discomfort — ` +
         `it typically takes a shift of two or more time zones to notice.`,
   )
@@ -141,8 +139,7 @@ export function briefing(plan: Plan): Briefing {
   // move the central one (Wehrens 2017), hence: eat on the new schedule.
   tips.push(
     'Try to eat breakfast after waking up and dinner at least 3 hours before ' +
-      'sleeping — meal timing helps the rest of your body fall in line with ' +
-      'the new clock.',
+      'sleeping — meal timing helps with shifting the metabolic clock.',
   )
 
   if (advancing && plan.timeline.some((a) => a.kind === 'melatonin')) {
@@ -157,9 +154,11 @@ export function briefing(plan: Plan): Briefing {
   // E&B are explicit that shift rates are estimates: the real rate varies by
   // individual and by the bright light actually received.
   tips.push(
-    'These shift rates are estimates — how fast your clock actually moves ' +
-      'varies from person to person and with the light you really get. Treat ' +
-      'this schedule as a target, not a guarantee.',
+    'It is okay to sleep when sleepy. These shift rates are estimates — how ' +
+      'quickly body clocks adjust varies some per person (± ~30 min/day), so ' +
+      'treat this schedule as a target, not a guarantee. The general principles — ' +
+      'timing light, meals, exercise, and melatonin, plus pre-adjusting to ' +
+      'destination time — are helpful broadly speaking.',
   )
 
   if (plan.daysToAdjust >= PARAMS.maxPlanDays - 1) {

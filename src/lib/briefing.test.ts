@@ -73,7 +73,7 @@ describe('briefing', () => {
   })
 
   it('leads the tips with the light rule, pointed the right way', () => {
-    expect(briefing(plan(base)).tips[0]).toMatch(/dim morning and bright light in the evening/)
+    expect(briefing(plan(base)).tips[0]).toMatch(/dim morning and bright evening/)
     expect(briefing(plan(eastbound)).tips[0]).toMatch(
       /[Bb]right light in the morning and a dim evening/,
     )
@@ -145,15 +145,14 @@ describe('briefing', () => {
     }
   })
 
-  it('only mentions melatonin when it is actually scheduled', () => {
-    // Melatonin is advance-only in the model.
-    expect(briefing(plan(base)).tips.some((t) => /melatonin/i.test(t))).toBe(false)
-    expect(briefing(plan(eastbound)).tips.some((t) => /melatonin/i.test(t))).toBe(true)
-    expect(
-      briefing(plan({ ...eastbound, usesMelatonin: false })).tips.some((t) =>
-        /melatonin/i.test(t),
-      ),
-    ).toBe(false)
+  it('only gives melatonin dosing advice when it is actually scheduled', () => {
+    // Melatonin is advance-only in the model. The general-principles caveat
+    // names it in passing on every trip; the dosing tip is the one that
+    // must only appear when the schedule contains it.
+    const dosing = (t: string) => /0\.5 mg/.test(t)
+    expect(briefing(plan(base)).tips.some(dosing)).toBe(false)
+    expect(briefing(plan(eastbound)).tips.some(dosing)).toBe(true)
+    expect(briefing(plan({ ...eastbound, usesMelatonin: false })).tips.some(dosing)).toBe(false)
   })
 
   it('handles a trip with no time zone change', () => {

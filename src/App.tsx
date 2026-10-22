@@ -365,20 +365,15 @@ export default function App() {
     // PM–12:00 AM +1' needs noticeably more room than 'Sat 21:00–00:00 +1'.
     <main data-clock={clock}>
       <header className="page-head">
-        <h1>Jet Lag Planner</h1>
-        <div className="clock-toggle" role="group" aria-label="Clock format">
-          {(['24h', '12h'] as const).map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setClock(c)}
-              aria-pressed={clock === c}
-              className={clock === c ? 'active' : ''}
-            >
-              {c === '24h' ? '24h' : 'AM/PM'}
-            </button>
-          ))}
-        </div>
+        <h1>
+          <svg className="logo" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="13" cy="19" r="10.5" fill="none" stroke="currentColor" strokeWidth="2.4" />
+            <path d="M13 12.5V19l4.5 2.8" fill="none" stroke="currentColor" strokeWidth="2.4"
+              strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M31 1.5 17.5 8.2l4.6 2.1 2 4.7z" fill="currentColor" />
+          </svg>
+          Jet Lag Planner
+        </h1>
       </header>
 
       <div className="route-form">
@@ -435,7 +430,7 @@ export default function App() {
 
       <div className="zones-off">
         <label htmlFor="zonesoff">
-          Max hours off your regular bedtime: <strong>{zonesOff}h</strong>
+          Max change to bedtime: <strong>{zonesOff}h</strong>
         </label>
         <input
           id="zonesoff"
@@ -447,10 +442,8 @@ export default function App() {
           onChange={(e) => setZonesOff(Number(e.target.value))}
         />
         <p className="strategy-tip">
-          Caps how far the plan shifts your bedtime while you are still at home,
-          and how far off the regular local bedtime your first destination
-          nights start before easing onto it. Most people manage about 3 hours.
-          It also sets how many days of preparation the plan uses before you
+          The number of hours off regular bedtime that is still comfortable
+          (relative to jet lag). Also sets the number of prep days before you
           fly: {preTravelDays} {preTravelDays === 1 ? 'day' : 'days'}.
         </p>
       </div>
@@ -577,7 +570,22 @@ export default function App() {
         destinationCoords={destination}
       />
 
-      <h2 className="itinerary-head">Day by day</h2>
+      <h2 className="itinerary-head">
+        Clock shift plan
+        <div className="clock-toggle" role="group" aria-label="Clock format">
+          {(['24h', '12h'] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setClock(c)}
+              aria-pressed={clock === c}
+              className={clock === c ? 'active' : ''}
+            >
+              {c === '24h' ? '24h' : 'AM/PM'}
+            </button>
+          ))}
+        </div>
+      </h2>
 
       {result.days.map((day) => (
         <section key={day.index}>
