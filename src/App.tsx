@@ -199,7 +199,8 @@ function WindowLine(props: {
   advice: Advice
   clock: ClockFormat
   zone?: string
-  /** Trailing label, used to name the zone on the alternate transit line. */
+  /** Names the zone on the alternate transit line. On screen that line is
+      told apart by colour, so the name is read aloud but not shown. */
   place?: string
   className: string
 }) {
@@ -218,7 +219,6 @@ function WindowLine(props: {
         <span className="w-dash">{p.end ? '–' : ''}</span>
         <span className="w-time">{p.end && <ClockTime t={p.end} />}</span>
         <span className="w-next">{p.endsNextDay ? '+1' : ''}</span>
-        {props.place && <span className="w-place">{props.place}</span>}
       </span>
     </span>
   )
@@ -609,8 +609,7 @@ export default function App() {
           </h2>
           {day.transit && (
             <p className="transit-note">
-              Travel day — times shown in both {day.place.label} and{' '}
-              {day.otherPlace!.label} clocks.
+              Travel day — <span className="alt-zone">{day.otherPlace!.label} time shown in blue</span>.
             </p>
           )}
           <ul>
@@ -624,7 +623,7 @@ export default function App() {
                       clock={clock}
                       zone={day.otherPlace.zone}
                       place={day.otherPlace.label}
-                      className="wline alt-window"
+                      className="wline alt-window alt-zone"
                     />
                   )}
                 </span>
@@ -633,12 +632,9 @@ export default function App() {
                   {KIND_LABEL[a.kind]}
                 </span>
                 <span className="note">
+                  {a.inFlight && <span className="in-flight">in flight</span>}
+                  {a.inFlight && SPAN_HINT[a.span] && ' · '}
                   {SPAN_HINT[a.span]}
-                  {a.inFlight && (
-                    <span className="in-flight">
-                      {SPAN_HINT[a.span] && ' · '}in flight
-                    </span>
-                  )}
                 </span>
               </li>
             ))}
