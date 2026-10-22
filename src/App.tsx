@@ -8,6 +8,7 @@ import {
   strategyChoice,
   windowParts,
   zoneOffsetLabel,
+  zoneShortLabel,
   type Advice,
   type ClockFormat,
   type Place,
@@ -16,7 +17,14 @@ import {
 } from './lib/circadian'
 import { NO_PLAN_MESSAGE, briefing, needsPlan } from './lib/briefing'
 import { estimateArrival, resolveFlight } from './lib/flight'
-import { formatClockText, parseClockText } from './lib/clocktext'
+import {
+  autoColon,
+  clockDigits,
+  meridiemOf,
+  parseClockText,
+  withMeridiem,
+  type Meridiem,
+} from './lib/clocktext'
 import { KIND_EMOJI, KIND_LABEL, SPAN_HINT } from './lib/visual'
 import DayVisual from './components/DayVisual'
 import { SOURCES } from './lib/sources'
@@ -130,26 +138,54 @@ function TimeInput(props: {
   // the time the text is derived from the value, which is how the clock
   // toggle reaches it.
   const [draft, setDraft] = useState<string | null>(null)
-  const text = draft ?? formatClockText(value, clock)
+  const text = draft ?? clockDigits(value, clock)
+  // In 12h mode the field holds digits only and AM/PM is a button pair
+  // beside it: a phone's numeric keypad has no letters, so typing 'pm' is
+  // not an option there. Desktop users can still type it and it wins.
+  const meridiem = meridiemOf(value)
+  const commit = (raw: string) => {
+    const parsed = parseClockText(raw)
+    if (!parsed) return
+    const hour = Number(parsed.slice(0, 2))
+    const typedMeridiem = /[ap]m/i.test(raw)
+    const bare12h = clock === '12h' && !typedMeridiem && hour >= 1 && hour <= 12
+    onChange(bare12h ? withMeridiem(parsed, meridiem) : parsed)
+  }
   return (
-    <input
-      id={id}
-      type="text"
-      inputMode="numeric"
-      aria-label={props.ariaLabel}
-      placeholder={clock === '12h' ? 'h:mm AM' : 'HH:mm'}
-      value={text}
-      onChange={(e) => {
-        setDraft(e.target.value)
-        const parsed = parseClockText(e.target.value)
-        if (parsed) onChange(parsed)
-      }}
-      onBlur={() => {
-        const parsed = parseClockText(text)
-        if (parsed) onChange(parsed)
-        setDraft(null)
-      }}
-    />
+    <span className="time-field">
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        aria-label={props.ariaLabel}
+        placeholder={clock === '12h' ? 'h:mm' : 'HH:mm'}
+        value={text}
+        onChange={(e) => {
+          const next = autoColon(e.target.value, text, clock)
+          setDraft(next)
+          commit(next)
+        }}
+        onBlur={() => {
+          commit(text)
+          setDraft(null)
+        }}
+      />
+      {clock === '12h' && (
+        <span className="clock-toggle meridiem" role="group" aria-label="AM or PM">
+          {(['AM', 'PM'] as Meridiem[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={meridiem === m}
+              className={meridiem === m ? 'active' : ''}
+              onClick={() => onChange(withMeridiem(value, m))}
+            >
+              {m}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -165,13 +201,11 @@ function useClockFormat(): [ClockFormat, (c: ClockFormat) => void] {
   return [clock, setClock]
 }
 
-function PlaceTag({ place }: { place: Place }) {
+function PlaceTag({ place, at }: { place: Place; at: Date }) {
   return (
     <span className="place">
       {place.label}{' '}
-      <span className="zone">
-        · {place.zone} ({place.offsetLabel})
-      </span>
+      <span className="zone">({zoneShortLabel(place.zone, at)})</span>
     </span>
   )
 }
@@ -601,7 +635,7 @@ export default function App() {
       {result.days.map((day) => (
         <section key={day.index}>
           <h2>
-            Day {day.index + 1} — {day.date} <PlaceTag place={day.place} />
+            Day {day.index + 1} — {day.date} <PlaceTag place={day.place} at={day.wake} />
             <span className="span">
               up {formatTime(day.wake, day.zone, clock)} → bed{' '}
               {formatTime(day.bed, day.zone, clock)}
@@ -631,11 +665,7 @@ export default function App() {
                   <span className="k-emoji" aria-hidden="true">{KIND_EMOJI[a.kind]}</span>{' '}
                   {KIND_LABEL[a.kind]}
                 </span>
-                <span className="note">
-                  {a.inFlight && <span className="in-flight">in flight</span>}
-                  {a.inFlight && SPAN_HINT[a.span] && ' · '}
-                  {SPAN_HINT[a.span]}
-                </span>
+                <span className="note">{SPAN_HINT[a.span]}</span>
               </li>
             ))}
           </ul>

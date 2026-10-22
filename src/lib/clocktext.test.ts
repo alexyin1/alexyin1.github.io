@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { formatClockText, parseClockText } from './clocktext'
+import {
+  autoColon,
+  clockDigits,
+  formatClockText,
+  meridiemOf,
+  parseClockText,
+  withMeridiem,
+} from './clocktext'
 
 describe('formatClockText', () => {
   it('renders 24h values unchanged, zero-padded', () => {
@@ -36,11 +43,56 @@ describe('parseClockText', () => {
     expect(parseClockText('12:00 pm')).toBe('12:00')
   })
 
+  it('reads a trailing colon as a whole hour', () => {
+    expect(parseClockText('9:')).toBe('09:00')
+    expect(parseClockText('11:')).toBe('11:00')
+    expect(parseClockText('9:3')).toBeNull()
+  })
+
   it('rejects nonsense', () => {
     expect(parseClockText('')).toBeNull()
     expect(parseClockText('25:00')).toBeNull()
     expect(parseClockText('10:75')).toBeNull()
     expect(parseClockText('14:00 pm')).toBeNull()
     expect(parseClockText('lunchtime')).toBeNull()
+  })
+})
+
+describe('clockDigits and meridiem helpers', () => {
+  it('splits a 12h time into digits and a meridiem', () => {
+    expect(clockDigits('13:05', '12h')).toBe('1:05')
+    expect(clockDigits('00:30', '12h')).toBe('12:30')
+    expect(clockDigits('13:05', '24h')).toBe('13:05')
+    expect(meridiemOf('13:05')).toBe('PM')
+    expect(meridiemOf('00:30')).toBe('AM')
+    expect(meridiemOf('12:00')).toBe('PM')
+  })
+
+  it('moves a clock-face time to the other half of the day', () => {
+    expect(withMeridiem('01:00', 'PM')).toBe('13:00')
+    expect(withMeridiem('13:00', 'AM')).toBe('01:00')
+    expect(withMeridiem('12:30', 'AM')).toBe('00:30')
+    expect(withMeridiem('00:30', 'PM')).toBe('12:30')
+    expect(withMeridiem('09:15', 'AM')).toBe('09:15')
+  })
+})
+
+describe('autoColon', () => {
+  it('adds the colon once the hour is unambiguous', () => {
+    expect(autoColon('9', '', '12h')).toBe('9:')
+    expect(autoColon('1', '', '12h')).toBe('1')
+    expect(autoColon('11', '1', '12h')).toBe('11:')
+    expect(autoColon('13', '1', '12h')).toBe('1:3')
+    expect(autoColon('2', '', '24h')).toBe('2')
+    expect(autoColon('3', '', '24h')).toBe('3:')
+    expect(autoColon('23', '2', '24h')).toBe('23:')
+    expect(autoColon('24', '2', '24h')).toBe('2:4')
+  })
+
+  it('leaves deletions, replacements and anything past the hour alone', () => {
+    expect(autoColon('11', '11:', '12h')).toBe('11')
+    expect(autoColon('9', '11:00', '12h')).toBe('9')
+    expect(autoColon('9:3', '9:', '12h')).toBe('9:3')
+    expect(autoColon('0930', '', '24h')).toBe('0930')
   })
 })

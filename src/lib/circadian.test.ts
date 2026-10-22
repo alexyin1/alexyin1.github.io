@@ -15,6 +15,7 @@ import {
   windowParts,
   zoneCityName,
   zoneOffsetLabel,
+  zoneShortLabel,
 } from './circadian'
 
 const iso = (s: string) => new Date(s)
@@ -1053,5 +1054,18 @@ describe('plan: input validation', () => {
   it('rejects malformed clock times', () => {
     expect(() => plan({ ...eastward, habitualBedLocal: '11pm' })).toThrow(/Expected 'HH:mm'/)
     expect(() => plan({ ...eastward, habitualWakeLocal: '25:00' })).toThrow(/Invalid time/)
+  })
+})
+
+describe('zoneShortLabel', () => {
+  const at = new Date('2026-06-01T12:00:00Z')
+  it('uses the English abbreviation where one exists', () => {
+    expect(zoneShortLabel('America/Los_Angeles', at)).toBe('PDT')
+    expect(zoneShortLabel('America/New_York', at)).toBe('EDT')
+  })
+  it('falls back to the UTC offset elsewhere, never a GMT+n name', () => {
+    expect(zoneShortLabel('Asia/Shanghai', at)).toBe('UTC+8')
+    expect(zoneShortLabel('Asia/Kolkata', at)).toBe('UTC+5:30')
+    expect(zoneShortLabel('Europe/London', at)).toBe('UTC+1')
   })
 })

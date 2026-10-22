@@ -190,6 +190,12 @@ li {
 .trip-form .field { display: flex; flex-direction: column; }
 .trip-form label { font-size: 0.85rem; color: #777; margin-bottom: 0.2rem; }
 .trip-form input { font: inherit; padding: 0.25rem 0.4rem; }
+
+/* A time field is the digits plus, in 12h mode, an AM/PM pair. The input is
+   sized to its five characters so the pair sits beside it on a phone. */
+.time-field { display: inline-flex; gap: 0.4rem; align-items: stretch; }
+.time-field input { width: 6em; }
+.clock-toggle.meridiem button { padding: 0.25rem 0.6rem; }
 .form-error { margin: 0.35rem 0 0; color: #b4232a; }
 .zones-off { margin: 0.75rem 0 0.25rem; }
 .zones-off label { display: block; margin-bottom: 0.25rem; }
@@ -222,7 +228,6 @@ li {
 /* How to read the window, plus the in-flight flag: deliberately quiet, since
    it qualifies the row rather than adding to it. */
 .note { color: #999; font-size: 0.85em; }
-.note .in-flight { color: #a06a00; }
 
 li.sleep { border-color: #4a5aa8; }
 li.seek-light { border-color: #e8a317; }
