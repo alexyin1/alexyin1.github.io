@@ -609,7 +609,7 @@ export default function App() {
           </h2>
           {day.transit && (
             <p className="transit-note">
-              Travel day — <span className="alt-zone">{day.otherPlace!.label} time shown in blue</span>.
+              Travel day — <span className="alt-zone">{day.otherPlace!.label} time shown in orange</span>.
             </p>
           )}
           <ul>

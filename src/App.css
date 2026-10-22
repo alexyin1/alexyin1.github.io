@@ -164,9 +164,10 @@ li {
 .w-next { color: #888; font-size: 0.85em; padding-left: 0.3rem; }
 
 /* The travel day's second line is the other zone's clock. It is told apart
-   by colour alone -- the transit note names the zone in the same blue --
-   so the '+1' marker takes that colour too rather than its usual grey. */
-.alt-zone { color: #3b63c4; }
+   by colour alone -- the transit note names the zone in the same amber as
+   'in flight', since blue would read as a link -- so the '+1' marker takes
+   that colour too rather than its usual grey. */
+.alt-zone { color: #a06a00; }
 .alt-window { font-size: 0.85em; }
 .alt-window .w-next { color: inherit; }
 
