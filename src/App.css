@@ -7,13 +7,14 @@ main {
      whole window plus the transit day's trailing zone label. Both are sized
      for the active clock format so nothing wraps and nothing is left to
      max-content, which would let a row without an end time pull its
-     neighbours out of line. */
-  --timecol: 2.9em;
+     neighbours out of line. Measured in rem, not em, so the travel day's
+     smaller second line keeps the same columns as the line above it. */
+  --timecol: 2.9rem;
   --wincol: 12rem;
 }
 
 main[data-clock='12h'] {
-  --timecol: 4.8em;
+  --timecol: 4.8rem;
   --wincol: 16rem;
 }
 
@@ -135,12 +136,14 @@ li {
 /* One window line laid out in cells, so weekday, start, end and the '+1'
    marker sit in the same place on every row. Inside a time cell the hour and
    the meridiem are fixed-width too, which is what keeps the colons aligned
-   between a one-digit hour and a two-digit one. */
+   between a one-digit hour and a two-digit one. Every width here is in rem
+   for the same reason as --timecol: the alternate-zone line on a travel day
+   is set smaller, and its cells must still stack under the main line's. */
 .wline { display: block; }
 
 .wcells {
   display: grid;
-  grid-template-columns: 2.4em var(--timecol) 0.75em var(--timecol) 1.7em auto;
+  grid-template-columns: 2.4rem var(--timecol) 0.75rem var(--timecol) 1.7rem auto;
   align-items: baseline;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -155,11 +158,11 @@ li {
   white-space: nowrap;
 }
 
-.w-h { display: inline-block; min-width: 2ch; text-align: right; }
-.w-ap { display: inline-block; min-width: 2.9ch; margin-left: 0.4ch; }
+.w-h { display: inline-block; min-width: 1.2rem; text-align: right; }
+.w-ap { display: inline-block; min-width: 1.65rem; margin-left: 0.25rem; }
 .w-dash { text-align: center; }
-.w-next { color: #888; font-size: 0.85em; padding-left: 0.3em; }
-.w-place { color: inherit; padding-left: 0.2em; }
+.w-next { color: #888; font-size: 0.85em; padding-left: 0.3rem; }
+.w-place { color: inherit; padding-left: 0.2rem; }
 
 .alt-window {
   color: #999;

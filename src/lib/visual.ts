@@ -287,12 +287,12 @@ export const KIND_LABEL: Record<AdviceKind, string> = {
 }
 
 /**
- * How to read the times beside a recommendation. A bare range cannot say
- * whether it is something to sustain or a slot to fit something into, so the
- * itinerary spells it out; point advice needs no gloss, its time is the time.
+ * How to read the times beside a recommendation. A sustained window and a
+ * point need no gloss -- the range or the time is the instruction -- but a
+ * slot to fit something into says so, or its range reads as a duration.
  */
 export const SPAN_HINT: Record<AdviceSpan, string> = {
-  throughout: 'the whole window',
+  throughout: '',
   within: 'any time in this window',
   point: '',
 }

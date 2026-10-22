@@ -60,8 +60,13 @@ function AirportInput(props: {
   onSelect: (a: Airport) => void
 }) {
   const { id, airports, selected } = props
-  const [text, setText] = useState('')
-  const suggestions = airports && text ? searchAirports(airports, text) : []
+  // While the field is being edited the typed draft is authoritative; the
+  // rest of the time it shows the current pick as a real value, not as a
+  // placeholder, so a chosen airport reads in full colour like any other
+  // filled-in field.
+  const [draft, setDraft] = useState<string | null>(null)
+  const text = draft ?? `${selected.iata} · ${selected.city}`
+  const suggestions = airports && draft ? searchAirports(airports, draft) : []
   return (
     <div className="airport-input">
       <label htmlFor={id}>{props.label}</label>
@@ -69,27 +74,33 @@ function AirportInput(props: {
         id={id}
         type="text"
         list={`${id}-list`}
-        placeholder={`${selected.iata} · ${selected.city}`}
+        placeholder="Airport code or city"
         value={text}
         disabled={!airports}
+        // Select the current pick on focus so typing replaces it outright.
+        onFocus={(e) => e.target.select()}
         onChange={(e) => {
           const value = e.target.value
-          setText(value)
+          setDraft(value)
           if (!airports) return
           const hit = resolveAirport(airports, value)
-          // Only commit on an unambiguous pick: an exact code or a chosen
-          // suggestion. Free text commits on blur instead.
-          if (hit && (value.trim().length === 3 || value.includes('·'))) {
+          if (!hit) return
+          // Only commit on an unambiguous pick: a chosen suggestion settles
+          // the field at once; an exact code commits but stays editable
+          // until blur, so typing past it does not fight the user.
+          if (value.includes('·')) {
+            props.onSelect(hit)
+            setDraft(null)
+          } else if (value.trim().length === 3) {
             props.onSelect(hit)
           }
         }}
         onBlur={() => {
-          if (!airports || !text.trim()) return
-          const hit = resolveAirport(airports, text)
-          if (hit) {
-            props.onSelect(hit)
-            setText('')
+          if (airports && draft?.trim()) {
+            const hit = resolveAirport(airports, draft)
+            if (hit) props.onSelect(hit)
           }
+          setDraft(null)
         }}
       />
       <datalist id={`${id}-list`}>
@@ -414,7 +425,7 @@ export default function App() {
           </p>
           <div className="field">
             <label htmlFor="arrivedate">
-              Arrival <span className="muted">({destination.iata} local{arrivalManual ? '' : ', estimated for a direct flight'})</span>
+              Arrival <span className="muted">({destination.iata} local)</span>
             </label>
             <div className="when">
               <input id="arrivedate" type="date" value={arriveDate}
