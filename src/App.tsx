@@ -8,7 +8,6 @@ import {
   strategyChoice,
   windowParts,
   zoneOffsetLabel,
-  zoneShortLabel,
   type Advice,
   type ClockFormat,
   type Place,
@@ -201,11 +200,11 @@ function useClockFormat(): [ClockFormat, (c: ClockFormat) => void] {
   return [clock, setClock]
 }
 
-function PlaceTag({ place, at }: { place: Place; at: Date }) {
+function PlaceTag({ place }: { place: Place }) {
   return (
     <span className="place">
       {place.label}{' '}
-      <span className="zone">({zoneShortLabel(place.zone, at)})</span>
+      <span className="zone">({place.offsetLabel})</span>
     </span>
   )
 }
@@ -439,7 +438,7 @@ export default function App() {
           <AirportInput id="origin" label="From" airports={airports}
             selected={origin} onSelect={setOrigin} />
           <p className="leg-zone">
-            {origin.city || origin.name} · {origin.tz} ({zoneOffsetLabel(origin.tz, departInstant)})
+            {origin.tz} ({zoneOffsetLabel(origin.tz, departInstant)})
           </p>
           <div className="field">
             <label htmlFor="departdate">Departure <span className="muted">({origin.iata} local)</span></label>
@@ -455,7 +454,7 @@ export default function App() {
           <AirportInput id="destination" label="To" airports={airports}
             selected={destination} onSelect={setDestination} />
           <p className="leg-zone">
-            {destination.city || destination.name} · {destination.tz} ({zoneOffsetLabel(destination.tz, arriveInstant)})
+            {destination.tz} ({zoneOffsetLabel(destination.tz, arriveInstant)})
           </p>
           <div className="field">
             <label htmlFor="arrivedate">
@@ -635,7 +634,7 @@ export default function App() {
       {result.days.map((day) => (
         <section key={day.index}>
           <h2>
-            Day {day.index + 1} — {day.date} <PlaceTag place={day.place} at={day.wake} />
+            Day {day.index + 1} — {day.date} <PlaceTag place={day.place} />
             <span className="span">
               up {formatTime(day.wake, day.zone, clock)} → bed{' '}
               {formatTime(day.bed, day.zone, clock)}

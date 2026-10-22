@@ -289,17 +289,6 @@ export function zoneOffsetLabel(zone: string, at: Date): string {
     : `UTC${sign}${whole}:${String(minutes).padStart(2, '0')}`
 }
 
-/**
- * A zone the way a traveler says it: the English abbreviation where one
- * exists ('PDT', 'EST'), otherwise the offset ('UTC+8'). Intl only has
- * abbreviations for a few regions, so this never shows 'GMT+8'-style
- * names, which would sit oddly beside the UTC form used elsewhere.
- */
-export function zoneShortLabel(zone: string, at: Date): string {
-  const name = DateTime.fromJSDate(at, { zone }).setLocale('en-US').offsetNameShort
-  return name && /^[A-Z]{2,5}$/.test(name) ? name : zoneOffsetLabel(zone, at)
-}
-
 function makePlace(zone: string, label: string | undefined, at: Date): Place {
   return {
     label: label?.trim() || zoneCityName(zone),
